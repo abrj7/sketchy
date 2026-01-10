@@ -1,0 +1,29 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap');
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ffffff;
+  --accent: #0070f3;
+  --canvas-bg: #111111;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  background: var(--background);
+  color: var(--foreground);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+}
+
+.canvas-container {
+  height: 100vh;
+  width: 100vw;
+  background: var(--canvas-bg);
+}

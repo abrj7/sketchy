@@ -1,0 +1,99 @@
+.main {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  width: 100vw;
+  background-color: #0c0c0c;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: rgba(18, 18, 18, 0.8);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid #333;
+  z-index: 100;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logo h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.5px;
+}
+
+.badge {
+  font-size: 0.7rem;
+  background: #333;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  color: #888;
+}
+
+.controls {
+  display: flex;
+  gap: 1rem;
+}
+
+.select {
+  background: #222;
+  border: 1px solid #444;
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-family: inherit;
+  outline: none;
+}
+
+.generateBtn {
+  background: linear-gradient(135deg, #0070f3 0%, #00a1ff 100%);
+  color: white;
+  border: none;
+  padding: 0.5rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.generateBtn:hover {
+  transform: translateY(-1px);
+}
+
+.exportBtn {
+  background: #222;
+  color: white;
+  border: 1px solid #444;
+  padding: 0.5rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.canvasWrapper {
+  flex: 1;
+  position: relative;
+}
+
+.footer {
+  position: absolute;
+  bottom: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(18, 18, 18, 0.6);
+  backdrop-filter: blur(5px);
+  padding: 0.5rem 1.5rem;
+  border-radius: 50px;
+  border: 1px solid #333;
+  color: #666;
+  font-size: 0.9rem;
+  z-index: 100;
+  pointer-events: none;
+}
