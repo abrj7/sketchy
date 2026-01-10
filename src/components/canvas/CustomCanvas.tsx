@@ -1,147 +1,165 @@
 "use client";
 
-import { useRef, useState, useEffect } from "react";
+import { useState, useCallback } from "react";
 import styles from "./CustomCanvas.module.css";
-import { ArrowLeft, Send } from "lucide-react";
+import { Menu, ArrowLeft, Send, RotateCcw, Download, Eye, EyeOff } from "lucide-react";
+import { Tldraw, Editor } from "tldraw";
+import "tldraw/tldraw.css";
+import ChatPanel from "./ChatPanel";
 
 export default function CustomCanvas({ onBack }: { onBack: () => void }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [isDrawing, setIsDrawing] = useState(false);
-  const [ctx, setCtx] = useState<CanvasRenderingContext2D | null>(null);
-  const [color, setColor] = useState("#000000");
+  const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [viewMode, setViewMode] = useState<'canvas' | 'split' | 'preview'>('split');
+  const [generatedHtml, setGeneratedHtml] = useState("");
+  const [editor, setEditor] = useState<Editor | null>(null);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    // High DPI setup
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    
-    const context = canvas.getContext("2d");
-    if (context) {
-      context.scale(dpr, dpr);
-      context.lineCap = "round";
-      context.lineJoin = "round";
-      context.lineWidth = 3;
-      context.strokeStyle = color;
-      setCtx(context);
-    }
-
-    // Handle resize
-    const handleResize = () => {
-      const rect = canvas.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      if (context) {
-        context.scale(dpr, dpr);
-        context.lineCap = "round";
-        context.lineJoin = "round";
-        context.lineWidth = 3;
-        context.strokeStyle = color;
-      }
-    };
-
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+  const handleMount = useCallback((editorInstance: Editor) => {
+    setEditor(editorInstance);
   }, []);
 
-  // Update color when state changes
-  useEffect(() => {
-    if (ctx) ctx.strokeStyle = color;
-  }, [color, ctx]);
+  const handleGenerate = () => {
+    if (!editor) return;
 
-  const startDrawing = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!ctx) return;
-    setIsDrawing(true);
-    ctx.beginPath();
-    const { x, y } = getCoordinates(e);
-    ctx.moveTo(x, y);
+    // Export tldraw data for Gemini processing
+    const snapshot = editor.getSnapshot();
+    console.log("Canvas snapshot for generation:", snapshot);
+
+    // TODO: Send to Gemini API
+    // For now, set placeholder HTML
+    setGeneratedHtml(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <style>
+          body { margin: 0; font-family: system-ui; background: #f0f9ff; }
+          .container { padding: 2rem; text-align: center; }
+          h1 { color: #0c4a6e; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <h1>Generated Website Preview</h1>
+          <p>Draw your wireframe above and click Generate to see results here.</p>
+        </div>
+      </body>
+      </html>
+    `);
   };
 
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
-    if (!isDrawing || !ctx) return;
-    const { x, y } = getCoordinates(e);
-    ctx.lineTo(x, y);
-    ctx.stroke();
+  const handleRegenerate = () => {
+    console.log("Regenerate clicked");
+    handleGenerate();
   };
 
-  const stopDrawing = () => {
-    setIsDrawing(false);
-    if (ctx) ctx.closePath();
-  };
-
-  const getCoordinates = (e: React.MouseEvent | React.TouchEvent) => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0 };
-    
-    const rect = canvas.getBoundingClientRect();
-    let clientX, clientY;
-
-    if ('touches' in e) {
-      clientX = e.touches[0].clientX;
-      clientY = e.touches[0].clientY;
-    } else {
-      clientX = (e as React.MouseEvent).clientX;
-      clientY = (e as React.MouseEvent).clientY;
+  const handleExport = () => {
+    if (!generatedHtml) {
+      alert("No generated code to export yet!");
+      return;
     }
 
-    return {
-      x: clientX - rect.left,
-      y: clientY - rect.top
-    };
+    const blob = new Blob([generatedHtml], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "generated-website.html";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
     <div className={styles.container}>
       {/* Toolbar */}
       <div className={styles.toolbar}>
-        <button onClick={onBack} className={styles.iconBtn}>
-          <ArrowLeft size={20} />
-        </button>
-        
-        <div className={styles.tools}>
-          <input 
-            type="color" 
-            value={color} 
-            onChange={(e) => setColor(e.target.value)}
-            className={styles.colorPicker}
-          />
-          <div className={styles.separator} />
-          <button 
-            className={`${styles.toolBtn} ${color === "#000000" ? styles.active : ""}`}
-            onClick={() => setColor("#000000")}
-          >
-            Pen
+        <div className={styles.leftSection}>
+          <button onClick={onBack} className={styles.iconBtn} title="Back to dashboard">
+            <ArrowLeft size={20} />
           </button>
-          <button 
-             className={`${styles.toolBtn} ${color === "#ef4444" ? styles.active : ""}`}
-             onClick={() => setColor("#ef4444")}
-          >
-            Marker
+          <button className={styles.iconBtn} title="Menu">
+            <Menu size={20} />
           </button>
         </div>
 
-        <button className={styles.generateBtn}>
-          <Send size={16} style={{ marginRight: '8px' }}/>
-          Generate
-        </button>
+        <div className={styles.centerSection}>
+          <div className={styles.viewTabs}>
+            <button
+              className={`${styles.tabBtn} ${viewMode === 'canvas' ? styles.activeTab : ''}`}
+              onClick={() => setViewMode('canvas')}
+            >
+              Canvas
+            </button>
+            <button
+              className={`${styles.tabBtn} ${viewMode === 'split' ? styles.activeTab : ''}`}
+              onClick={() => setViewMode('split')}
+            >
+              Split View
+            </button>
+            <button
+              className={`${styles.tabBtn} ${viewMode === 'preview' ? styles.activeTab : ''}`}
+              onClick={() => setViewMode('preview')}
+            >
+              Preview
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.rightSection}>
+          <button className={styles.secondaryBtn} onClick={handleRegenerate} title="Regenerate">
+            <RotateCcw size={16} />
+            <span>Regenerate</span>
+          </button>
+
+          <button className={styles.secondaryBtn} onClick={handleExport} title="Export HTML">
+            <Download size={16} />
+            <span>Export</span>
+          </button>
+
+          <button className={styles.generateBtn} onClick={handleGenerate}>
+            <Send size={16} />
+            <span>Generate</span>
+          </button>
+        </div>
       </div>
 
-      <canvas
-        ref={canvasRef}
-        className={styles.canvas}
-        onMouseDown={startDrawing}
-        onMouseMove={draw}
-        onMouseUp={stopDrawing}
-        onMouseLeave={stopDrawing}
-        onTouchStart={startDrawing}
-        onTouchMove={draw}
-        onTouchEnd={stopDrawing}
-      />
+      {/* Main Content Area */}
+      <div className={styles.mainArea}>
+        <div className={styles.splitContainer}>
+          {/* tldraw Canvas */}
+          {viewMode !== 'preview' && (
+            <div className={`${styles.canvasSection} ${viewMode === 'canvas' ? styles.fullWidth : ''}`}>
+              <Tldraw onMount={handleMount} />
+            </div>
+          )}
+
+          {/* Preview Section */}
+          {viewMode !== 'canvas' && (
+            <div className={`${styles.previewSection} ${viewMode === 'preview' ? styles.fullWidth : ''}`}>
+              <div className={styles.previewHeader}>
+                <span>Live Preview</span>
+              </div>
+              <iframe
+                srcDoc={generatedHtml || `
+                  <html>
+                  <body style="margin:0;padding:2rem;font-family:system-ui;color:#9ca3af;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;text-align:center;">
+                    <div>
+                      <p style="font-size:1.25rem;margin:0 0 0.5rem;">Draw your wireframe</p>
+                      <p style="font-size:0.875rem;margin:0;color:#d1d5db;">Click Generate to see the preview here</p>
+                    </div>
+                  </body>
+                  </html>
+                `}
+                className={styles.previewIframe}
+                title="Live Preview"
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Chat Panel */}
+        <ChatPanel
+          isCollapsed={isChatCollapsed}
+          onToggle={() => setIsChatCollapsed(!isChatCollapsed)}
+        />
+      </div>
     </div>
   );
 }
