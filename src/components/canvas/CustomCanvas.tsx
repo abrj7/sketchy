@@ -2,52 +2,171 @@
 
 import { useState, useCallback } from "react";
 import styles from "./CustomCanvas.module.css";
-import { Menu, ArrowLeft, Send, RotateCcw, Download, Eye, EyeOff } from "lucide-react";
+import { Menu, ArrowLeft, Send, RotateCcw, Download, Loader2, Settings, X } from "lucide-react";
 import { Tldraw, Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import ChatPanel from "./ChatPanel";
+import { useStore } from "@/lib/store";
+
+// Style presets
+const STYLE_PRESETS = [
+  { id: 'modern', label: 'Modern', description: 'Clean lines, subtle shadows, professional' },
+  { id: 'minimalistic', label: 'Minimalistic', description: 'Simple, lots of whitespace, essential elements only' },
+  { id: 'dynamic', label: 'Dynamic', description: 'Bold colors, animations, eye-catching' },
+  { id: 'retro', label: 'Retro', description: '80s/90s vibes, vintage colors, nostalgic' },
+  { id: 'glassmorphism', label: 'Glass', description: 'Frosted glass effects, blur, transparency' },
+  { id: 'brutalist', label: 'Brutalist', description: 'Raw, bold typography, unconventional' },
+] as const;
+
+type StylePreset = typeof STYLE_PRESETS[number]['id'];
 
 export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   const [isChatCollapsed, setIsChatCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<'canvas' | 'split' | 'preview'>('split');
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  
+  // Style customization state
+  const [websiteStyle, setWebsiteStyle] = useState<StylePreset>('modern');
+  const [backgroundColor, setBackgroundColor] = useState('#ffffff');
+  const [accentColor, setAccentColor] = useState('#3b82f6');
+  
+  // Store for loading state
+  const { isGenerating, setGenerating } = useStore();
 
   const handleMount = useCallback((editorInstance: Editor) => {
     setEditor(editorInstance);
   }, []);
 
-  const handleGenerate = () => {
-    if (!editor) return;
+  const handleGenerate = async () => {
+    if (!editor) {
+      alert("Canvas not ready yet");
+      return;
+    }
 
-    // Export tldraw data for Gemini processing
-    const snapshot = editor.getSnapshot();
-    console.log("Canvas snapshot for generation:", snapshot);
+    setGenerating(true);
 
-    // TODO: Send to Gemini API
-    // For now, set placeholder HTML
-    setGeneratedHtml(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <style>
-          body { margin: 0; font-family: system-ui; background: #f0f9ff; }
-          .container { padding: 2rem; text-align: center; }
-          h1 { color: #0c4a6e; }
-        </style>
-      </head>
-      <body>
-        <div class="container">
-          <h1>Generated Website Preview</h1>
-          <p>Draw your wireframe above and click Generate to see results here.</p>
-        </div>
-      </body>
-      </html>
-    `);
+    try {
+      // Get all shape IDs on the canvas
+      const shapeIds = editor.getCurrentPageShapeIds();
+      
+      if (shapeIds.size === 0) {
+        alert("Please draw something on the canvas first!");
+        setGenerating(false);
+        return;
+      }
+
+      // Convert Set to Array for tldraw API
+      const shapeIdArray = Array.from(shapeIds);
+
+      // Use tldraw's getSvgElement method to export as SVG, then convert to PNG
+      const svgElement = await editor.getSvgElement(shapeIdArray, {
+        background: true,
+        padding: 20,
+      });
+
+      if (!svgElement) {
+        alert("Failed to export canvas");
+        setGenerating(false);
+        return;
+      }
+
+      // getSvgElement returns { height, svg, width } - extract the actual SVG element and dimensions
+      const { svg, width: svgWidth, height: svgHeight } = svgElement;
+
+      // Serialize SVG element to string
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(svg as Node);
+
+      // Convert SVG to PNG using canvas
+      const img = new Image();
+      const svgBlob = new Blob([svgString], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(svgBlob);
+
+      img.onload = async () => {
+        // Create a canvas to convert SVG to PNG
+        const canvas = document.createElement('canvas');
+        canvas.width = svgWidth;
+        canvas.height = svgHeight;
+        const ctx = canvas.getContext('2d');
+        
+        if (ctx) {
+          // Fill white background
+          ctx.fillStyle = 'white';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          
+          const base64Image = canvas.toDataURL('image/png');
+          
+          console.log("📸 Canvas exported! Sending to API...");
+
+          try {
+            // Send to API with style settings
+            const response = await fetch("/api/generate", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                image: base64Image,
+                style: websiteStyle,
+                backgroundColor,
+                accentColor,
+              }),
+            });
+
+            const data = await response.json();
+
+            if (data.error) {
+              console.error("API Error:", data.error);
+              alert("Error: " + data.error);
+            } else {
+              // Combine HTML, CSS, and JS into a single document
+              const fullHtml = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                  <style>${data.css || ""}</style>
+                </head>
+                <body>
+                  ${data.html || ""}
+                  <script>${data.js || ""}</script>
+                </body>
+                </html>
+              `;
+              setGeneratedHtml(fullHtml);
+              
+              // Auto-switch to split view if in canvas-only mode
+              if (viewMode === 'canvas') {
+                setViewMode('split');
+              }
+            }
+          } catch (err) {
+            console.error("Fetch error:", err);
+            alert("Failed to connect to API");
+          }
+        }
+        
+        URL.revokeObjectURL(url);
+        setGenerating(false);
+      };
+
+      img.onerror = () => {
+        console.error("Failed to load SVG as image");
+        URL.revokeObjectURL(url);
+        setGenerating(false);
+        alert("Failed to process canvas");
+      };
+
+      img.src = url;
+
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Failed to export canvas");
+      setGenerating(false);
+    }
   };
 
   const handleRegenerate = () => {
-    console.log("Regenerate clicked");
     handleGenerate();
   };
 
@@ -61,7 +180,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "generated-website.html";
+    a.download = "webber-website.html";
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -76,6 +195,13 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
           </button>
           <button className={styles.iconBtn} title="Menu">
             <Menu size={20} />
+          </button>
+          <button 
+            className={`${styles.iconBtn} ${showSettings ? styles.activeIconBtn : ''}`} 
+            title="Style Settings"
+            onClick={() => setShowSettings(!showSettings)}
+          >
+            <Settings size={20} />
           </button>
         </div>
 
@@ -103,7 +229,12 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
         </div>
 
         <div className={styles.rightSection}>
-          <button className={styles.secondaryBtn} onClick={handleRegenerate} title="Regenerate">
+          <button 
+            className={styles.secondaryBtn} 
+            onClick={handleRegenerate} 
+            title="Regenerate"
+            disabled={isGenerating}
+          >
             <RotateCcw size={16} />
             <span>Regenerate</span>
           </button>
@@ -113,12 +244,75 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
             <span>Export</span>
           </button>
 
-          <button className={styles.generateBtn} onClick={handleGenerate}>
-            <Send size={16} />
-            <span>Generate</span>
+          <button 
+            className={styles.generateBtn} 
+            onClick={handleGenerate}
+            disabled={isGenerating}
+            style={{ opacity: isGenerating ? 0.7 : 1 }}
+          >
+            {isGenerating ? <Loader2 size={16} className={styles.spinning} /> : <Send size={16} />}
+            <span>{isGenerating ? "Generating..." : "Generate"}</span>
           </button>
         </div>
       </div>
+
+      {/* Settings Panel */}
+      {showSettings && (
+        <div className={styles.settingsPanel}>
+          <div className={styles.settingsHeader}>
+            <span>Style Settings</span>
+            <button className={styles.iconBtn} onClick={() => setShowSettings(false)}>
+              <X size={18} />
+            </button>
+          </div>
+          
+          <div className={styles.settingsContent}>
+            {/* Style Presets */}
+            <div className={styles.settingsSection}>
+              <label className={styles.settingsLabel}>Website Style</label>
+              <div className={styles.styleGrid}>
+                {STYLE_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    className={`${styles.styleBtn} ${websiteStyle === preset.id ? styles.activeStyleBtn : ''}`}
+                    onClick={() => setWebsiteStyle(preset.id)}
+                    title={preset.description}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            
+            {/* Colors */}
+            <div className={styles.settingsSection}>
+              <label className={styles.settingsLabel}>Background Color</label>
+              <div className={styles.colorPicker}>
+                <input
+                  type="color"
+                  value={backgroundColor}
+                  onChange={(e) => setBackgroundColor(e.target.value)}
+                  className={styles.colorInput}
+                />
+                <span className={styles.colorValue}>{backgroundColor}</span>
+              </div>
+            </div>
+            
+            <div className={styles.settingsSection}>
+              <label className={styles.settingsLabel}>Accent Color</label>
+              <div className={styles.colorPicker}>
+                <input
+                  type="color"
+                  value={accentColor}
+                  onChange={(e) => setAccentColor(e.target.value)}
+                  className={styles.colorInput}
+                />
+                <span className={styles.colorValue}>{accentColor}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Main Content Area */}
       <div className={styles.mainArea}>
