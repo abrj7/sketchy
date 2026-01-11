@@ -120,7 +120,7 @@ export default function Dashboard({ onCreateNew, onHome, onLogout, onOpenProject
       }
     } catch (error) {
       console.error("Failed to create project:", error);
-      onCreateNew();
+      alert("Failed to create a new project. Please try again.");
     } finally {
       setIsCreating(false);
     }

@@ -161,17 +161,6 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
       setShowWelcome(false);
     }, { source: 'user', scope: 'document' });
 
-    // For new projects (no saved data yet), clear any shapes that might exist
-    // from tldraw's localStorage persistence. We'll load the correct data in useEffect.
-    if (!projectId) {
-      // No projectId = clear immediately for totally blank canvas
-      const shapeIds = editorInstance.getCurrentPageShapeIds();
-      if (shapeIds.size > 0) {
-        editorInstance.deleteShapes(Array.from(shapeIds));
-        console.log("🧹 Cleared shapes for blank canvas (no projectId)");
-      }
-    }
-
     // Set up auto-save listener
     if (projectId) {
       editorInstance.sideEffects.registerAfterChangeHandler('shape', () => {
