@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import styles from "./CustomCanvas.module.css";
 import { Menu, ArrowLeft, Send, RotateCcw, Download, Loader2, Settings, X } from "lucide-react";
 import { Tldraw, Editor } from "tldraw";
@@ -208,7 +208,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} ${isDarkMode ? styles.darkMode : ''}`}>
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.leftSection}>
@@ -246,6 +246,13 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
               onClick={() => setViewMode('preview')}
             >
               Preview
+            </button>
+            <button
+              className={styles.darkModeToggle}
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
             </button>
           </div>
         </div>
@@ -338,7 +345,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
 
       {/* Main Content Area */}
       <div className={styles.mainArea}>
-        <div className={styles.splitContainer}>
+        <div className={styles.splitContainer} ref={containerRef}>
           {/* tldraw Canvas */}
           {viewMode !== 'preview' && (
             <div className={`${styles.canvasSection} ${viewMode === 'canvas' ? styles.fullWidth : ''}`}>
@@ -349,9 +356,22 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
             </div>
           )}
 
+          {/* Resize Handle - only shown in split view */}
+          {viewMode === 'split' && (
+            <div
+              className={`${styles.resizeHandle} ${isDragging ? styles.resizing : ''}`}
+              onMouseDown={handleResizeStart}
+            >
+              <div className={styles.resizeHandleBar} />
+            </div>
+          )}
+
           {/* Preview Section */}
           {viewMode !== 'canvas' && (
-            <div className={`${styles.previewSection} ${viewMode === 'preview' ? styles.fullWidth : ''}`}>
+            <div
+              className={`${styles.previewSection} ${viewMode === 'preview' ? styles.fullWidth : ''}`}
+              style={viewMode === 'split' ? { width: `${100 - splitPosition}%`, flex: 'none' } : undefined}
+            >
               <div className={styles.previewHeader}>
                 <span>Live Preview</span>
               </div>

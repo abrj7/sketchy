@@ -186,7 +186,7 @@ export default function ChatPanel({
     const suggestions = generateSuggestions();
 
     return (
-        <aside className={`${styles.panel} ${isCollapsed ? styles.collapsed : ''}`}>
+        <aside className={`${styles.panel} ${isCollapsed ? styles.collapsed : ''} ${isDarkMode ? styles.darkMode : ''}`}>
             {isCollapsed ? (
                 <button className={styles.expandBtn} onClick={onToggle} title="Expand chat">
                     <ChevronRight size={20} />
