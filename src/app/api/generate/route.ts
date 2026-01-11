@@ -1,7 +1,7 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { NextResponse } from "next/server";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const MODEL_NAME = 'gemini-2.5-flash';
 
 // Compact style rules
@@ -19,6 +19,7 @@ function getCompactStyleRules(style: string): string {
 
 function getTextColor(bg: string): string {
   const hex = bg.replace('#', '');
+  if (hex.length !== 6) return '#1f2937';
   const r = parseInt(hex.substr(0, 2), 16);
   const g = parseInt(hex.substr(2, 2), 16);
   const b = parseInt(hex.substr(4, 2), 16);
@@ -34,110 +35,91 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "No image provided" }, { status: 400 });
     }
 
-    let systemPrompt = "";
+    const finalStyle = style || 'modern';
+    const finalBgColor = backgroundColor || '#ffffff';
+    const finalAccentColor = accentColor || '#3b82f6';
+
+    let systemPrompt = `You are an expert website generator. Create a professional website from the user's sketch.
+    
+## STYLE CONSTRAINTS:
+Style: ${finalStyle}
+Background: ${finalBgColor}
+Accent: ${finalAccentColor}
+Rules: ${getCompactStyleRules(finalStyle)}
+
+## GUIDELINES:
+1. USE EXTERNAL ICONS: Use Lucide icons (via CDN/SVG) or simple font icons. Avoid generating massive custom SVG paths that bloat the code.
+2. BE CONCISE: Only generate necessary HTML/CSS. 
+3. JSON ONLY: Return strictly a JSON object. No other text.
+`;
 
     if (currentHtml) {
-      // INCREMENTAL UPDATE PROMPT (Regenerate mode)
-      systemPrompt = `
-You are an expert website generator. The user has UPDATED their sketch. 
-YOUR TASK: Update the existing website code to match the new sketch.
-
-## EXISTING CODE:
+      systemPrompt += `
+## TASK: UPDATE EXISTING CODE
+Update the following code to match the new sketch changes.
 ${currentHtml}
 
-## DESIGN CONSTRAINTS:
-Style: ${style}
-Background: ${backgroundColor}
-Accent: ${accentColor}
-
-## STYLE RULES:
-${getCompactStyleRules(style)}
-
 ## UPDATE STRATEGY:
-1. Compare the new sketch with the previous design.
-2. Only add, remove, or modify elements that have changed in the sketch.
-3. Preserve existing styles and structure where they still match the sketch.
-4. BE FAST. Only generate the necessary changes while maintaining a complete valid output.
-5. IMPORTANT: You MUST return the COMPLETE CSS for the entire page in the 'css' field, including any styles preserved from the existing code. Do not return empty CSS.
+- Modify only changed parts.
+- Preserve existing structure where it matches.
+- MUST return COMPLETE CSS in the 'css' field.
 
-## OUTPUT (JSON, no markdown):
+OUTPUT FORMAT:
 {
   "html": "updated body content only",
-  "css": "THE COMPLETE UPDATED CSS FOR THE ENTIRE PAGE",
-  "js": "minimal if needed"
+  "css": "THE COMPLETE UPDATED CSS",
+  "js": ""
 }
 `;
     } else {
-      // INITIAL GENERATION PROMPT
-      systemPrompt = `
-You are an expert website generator. Create a stunning, professional website from the user's sketch.
+      systemPrompt += `
+## TASK: NEW GENERATION
+Create a complete website body content and CSS.
 
-## DESIGN CONSTRAINTS:
-Style: ${style}
-Background: ${backgroundColor}
-Accent: ${accentColor}
-
-## STYLE RULES:
-${getCompactStyleRules(style)}
-
-## COLOR USAGE:
-- Dominant (60%): ${backgroundColor}
-- Accent (10%): ${accentColor} for CTAs, links, highlights
-- Neutral (30%): Grays for text, borders, cards
-- Text: ${getTextColor(backgroundColor)}
-
-## QUALITY REQUIREMENTS:
-- Modern CSS: flexbox/grid, proper spacing
-- Typography: clear hierarchy (h1: 3.5rem, p: 1.125rem)
-- Responsive: mobile breakpoints at 768px
-- Semantic HTML5: <header>, <main>, <section>, <footer>
-
-## OUTPUT (JSON, no markdown):
+OUTPUT FORMAT:
 {
-  "html": "body content only, no DOCTYPE/html/head/body tags",
-  "css": "complete CSS with variables, responsive, hover states",
-  "js": "minimal if needed"
+  "html": "body content with sections, forms, cards as sketched",
+  "css": "complete, responsive CSS with :root variables",
+  "js": ""
 }
 `;
     }
 
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+
     const base64Data = image.replace(/^data:image\/\w+;base64,/, '');
-
-    const parts = [
-      { text: systemPrompt },
-      {
-        inlineData: {
-          mimeType: 'image/png',
-          data: base64Data
-        }
+    
+    const result = await model.generateContent({
+      contents: [{ 
+        role: "user", 
+        parts: [
+          { text: systemPrompt },
+          { inlineData: { mimeType: 'image/png', data: base64Data } }
+        ] 
+      }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 12000, // Increased further
+        temperature: 0.4,
       }
-    ];
-
-    const response = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: [{ parts }]
     });
 
-    const text = response.text || "";
+    const response = result.response;
+    const text = response.text();
+    const finishReason = response.candidates?.[0]?.finishReason;
 
+    console.log(`📡 Generation finished. Reason: ${finishReason} | Length: ${text.length}`);
+    
     try {
-      let cleanedText = text
-        .replace(/```json\s*/gi, "")
-        .replace(/```\s*/g, "")
-        .trim();
-
-      const jsonMatch = cleanedText.match(/\{[\s\S]*"html"[\s\S]*"css"[\s\S]*\}/);
-      if (jsonMatch) {
-        cleanedText = jsonMatch[0];
-      }
-
-      const code = JSON.parse(cleanedText);
+      const code = JSON.parse(text);
       return NextResponse.json(code);
     } catch (parseError) {
-      console.error("Failed to parse AI response:", text);
-      return NextResponse.json({
-        error: "Invalid AI response format. Please try again.",
-        raw: text.substring(0, 1000)
+      console.error("❌ Failed to parse AI response. Finish Reason:", finishReason);
+      console.error("Partial text:", text.substring(text.length - 200));
+      return NextResponse.json({ 
+        error: "AI response was incomplete. Please try again with a simpler sketch.",
+        raw: text.substring(0, 1000),
+        reason: finishReason
       }, { status: 500 });
     }
   } catch (error: any) {
@@ -145,3 +127,5 @@ ${getCompactStyleRules(style)}
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+
