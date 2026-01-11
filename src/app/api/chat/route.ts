@@ -4,8 +4,6 @@ import { NextResponse } from "next/server";
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const MODEL_NAME = 'gemini-2.5-flash';
 
-// ==================== STYLE-SPECIFIC EDITING RULES ====================
-
 function getStyleEditingRules(style: string): string {
   const rules: Record<string, string> = {
     modern: `Keep clean lines, subtle shadows, generous whitespace. Use smooth transitions (0.3s ease).`,
@@ -34,63 +32,59 @@ export async function POST(req: Request) {
     const finalBgColor = backgroundColor || '#ffffff';
     const finalAccentColor = accentColor || '#3b82f6';
 
-    const systemPrompt = `
-You are an EXPERT WEBSITE EDITOR AI. The user has a generated website and wants to make changes via natural language.
-
+    const systemPrompt = `You are an EXPERT WEBSITE EDITOR AI. 
+    
 ## CURRENT WEBSITE CODE:
 ${currentHtml}
 
-## ACTIVE DESIGN SYSTEM:
-**STYLE:** ${finalStyle}
-**BACKGROUND COLOR:** ${finalBgColor}
-**ACCENT COLOR:** ${finalAccentColor}
-
-Style Guidelines: ${getStyleEditingRules(finalStyle)}
-
-## COLOR PALETTE (MUST MAINTAIN):
-- Background: ${finalBgColor}
-- Accent/CTAs: ${finalAccentColor}
+## DESIGN SYSTEM:
+STYLE: ${finalStyle}
+BACKGROUND: ${finalBgColor}
+ACCENT: ${finalAccentColor}
+RULES: ${getStyleEditingRules(finalStyle)}
 
 ## USER'S EDIT REQUEST:
 "${message}"
 
 ## EDITING RULES:
-1. Preserve the Design System: All changes must match the "${finalStyle}" aesthetic
-2. Color Consistency: Only use ${finalBgColor}, ${finalAccentColor}, and their variations
-3. Minimal Changes: Only modify what the user explicitly requests
-4. Maintain Structure: Keep existing layout unless asked to change it
-5. Quality First: Ensure responsive design and accessibility are maintained
+1. ONLY modify what is requested.
+2. Maintain color palette consistency.
+3. Return STRICTLY a JSON object.
+4. Avoid generating massive SVGs; keep it concise.
 
 ## OUTPUT FORMAT (JSON ONLY):
 {
-  "html": "BODY CONTENT ONLY - semantic HTML5. NO DOCTYPE, html, head, or body tags.",
-  "css": "Complete updated CSS maintaining the style system",
-  "js": "JavaScript if needed (usually empty string)",
+  "html": "BODY CONTENT ONLY",
+  "css": "Complete updated CSS",
+  "js": "",
   "changes": "Brief description of what was changed"
 }
 `;
 
-    console.log(`✏️ Editing website: "${message.substring(0, 50)}..." | Style: ${finalStyle}`);
+    console.log(`✏️ Editing website with ${MODEL_NAME}`);
 
-    const model = genAI.getGenerativeModel({ 
-      model: MODEL_NAME,
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME });
+
+    const result = await model.generateContent({
+      contents: [{ role: "user", parts: [{ text: systemPrompt }] }],
       generationConfig: {
         responseMimeType: "application/json",
         maxOutputTokens: 8192,
+        temperature: 0.3,
       }
     });
 
-    const result = await model.generateContent(systemPrompt);
     const text = result.response.text();
+    const finishReason = result.response.candidates?.[0]?.finishReason;
     
     try {
       const code = JSON.parse(text);
-      console.log("✅ Edit applied:", code.changes || "Changes made");
+      console.log(`✅ Edit applied by ${MODEL_NAME}. Reason: ${finishReason}`);
       return NextResponse.json(code);
     } catch (parseError) {
       console.error("❌ Failed to parse chat response:", text);
       return NextResponse.json({ 
-        error: "Failed to apply changes. Try rephrasing your request.",
+        error: "Failed to apply changes safely. Please try a simpler request.",
         raw: text.substring(0, 500)
       }, { status: 500 });
     }
