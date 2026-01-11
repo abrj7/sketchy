@@ -7,9 +7,10 @@ import styles from "./ChatPanel.module.css";
 interface ChatPanelProps {
     isCollapsed: boolean;
     onToggle: () => void;
+    isDarkMode: boolean;
 }
 
-export default function ChatPanel({ isCollapsed, onToggle }: ChatPanelProps) {
+export default function ChatPanel({ isCollapsed, onToggle, isDarkMode }: ChatPanelProps) {
     const [prompt, setPrompt] = useState("");
 
     const suggestions = [
@@ -26,7 +27,7 @@ export default function ChatPanel({ isCollapsed, onToggle }: ChatPanelProps) {
     ];
 
     return (
-        <aside className={`${styles.panel} ${isCollapsed ? styles.collapsed : ''}`}>
+        <aside className={`${styles.panel} ${isCollapsed ? styles.collapsed : ''} ${isDarkMode ? styles.darkMode : ''}`}>
             {isCollapsed ? (
                 <button className={styles.expandBtn} onClick={onToggle} title="Expand chat">
                     <ChevronRight size={20} />
