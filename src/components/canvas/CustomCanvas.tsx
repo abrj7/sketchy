@@ -62,6 +62,7 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [viewingVersion, setViewingVersion] = useState<{ _id: string; versionNumber: number; createdAt: string; generatedHtml: string } | null>(null);
   const [liveGeneratedHtml, setLiveGeneratedHtml] = useState("");
+  const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
 
   // Style customization state
   const [websiteStyle, setWebsiteStyle] = useState<StylePreset>('modern');
@@ -177,7 +178,7 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
 
   // Auto-save function
   const saveCanvas = async (ed: Editor) => {
-    if (!projectId) return;
+    if (!projectId || !isInitialLoadComplete) return;
 
     try {
       // Get all records from the store
@@ -229,8 +230,12 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
           if (data.project?.name) {
             setCurrentProjectName(data.project.name);
           }
+          setIsInitialLoadComplete(true);
         })
-        .catch(err => console.error("Failed to load project:", err));
+        .catch(err => {
+          console.error("Failed to load project:", err);
+          setIsInitialLoadComplete(true); // Still set to true so we can save new work if fetch fails
+        });
     }
   }, [projectId, editor]);
 
