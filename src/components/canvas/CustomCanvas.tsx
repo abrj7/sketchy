@@ -163,12 +163,7 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
 
     // For new projects (no saved data yet), clear any shapes that might exist
     // from tldraw's localStorage persistence. We'll load the correct data in useEffect.
-    if (projectId) {
-      // Schedule a check after mount to clear if no DB data
-      setTimeout(() => {
-        // This will be handled by the useEffect that loads project data
-      }, 0);
-    } else {
+    if (!projectId) {
       // No projectId = clear immediately for totally blank canvas
       const shapeIds = editorInstance.getCurrentPageShapeIds();
       if (shapeIds.size > 0) {
@@ -209,10 +204,9 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           canvasData: { records: allRecords },
-          generatedHtml,
         }),
       });
-      console.log("✅ Auto-saved");
+      console.log("✅ Auto-saved canvas data");
     } catch (error) {
       console.error("Auto-save failed:", error);
     }
@@ -239,13 +233,6 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
               return sanitized;
             });
             editor.store.put(records);
-          } else {
-            // New project with no saved data - clear any existing shapes from localStorage cache
-            const allShapeIds = editor.getCurrentPageShapeIds();
-            if (allShapeIds.size > 0) {
-              editor.deleteShapes(Array.from(allShapeIds));
-              console.log("🧹 Cleared cached shapes for new blank canvas");
-            }
           }
           if (data.project?.generatedHtml) {
             setGeneratedHtml(data.project.generatedHtml);
@@ -395,6 +382,19 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
     }
   }, [showHistory, projectId]);
 
+  // Handle clear canvas
+  const handleClearCanvas = useCallback(() => {
+    if (!editor) return;
+    if (confirm("Are you sure you want to clear the canvas? This cannot be undone.")) {
+      const shapeIds = editor.getCurrentPageShapeIds();
+      if (shapeIds.size > 0) {
+        editor.deleteShapes(Array.from(shapeIds));
+        // Force an immediate save
+        saveCanvas(editor);
+      }
+    }
+  }, [editor, projectId]);
+
   // Update tldraw dark mode when isDarkMode changes
   useEffect(() => {
     if (editor) {
@@ -412,6 +412,11 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
 
     setGenerating(true);
     console.log(isRegenerate ? "🔄 Regenerating website..." : "🚀 Generating website...");
+
+    // Immediate save to ensure DB is in sync before we start heavy processing
+    if (editor && projectId) {
+      await saveCanvas(editor);
+    }
 
     // Safety timeout to reset generating state if something goes wrong
     const timeoutId = setTimeout(() => {
@@ -542,6 +547,15 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
                     }),
                   });
                   if (showHistory) fetchVersions();
+
+                  // Also update the main project document with the new HTML
+                  await fetch(`/api/projects/${projectId}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      generatedHtml: fullHtml,
+                    }),
+                  });
                 }
 
                 // Auto-switch to split view if in canvas-only mode
@@ -652,6 +666,9 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
         <div className={styles.leftSection}>
           <button onClick={handleBack} className={styles.iconBtn} title="Back to dashboard">
             <ArrowLeft size={20} />
+          </button>
+          <button onClick={handleClearCanvas} className={styles.iconBtn} title="Clear Canvas" style={{ color: '#ef4444' }}>
+            <RotateCcw size={18} />
           </button>
           <div className={styles.actionTabs}>
             <button
@@ -981,7 +998,16 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
           backgroundColor={backgroundColor}
           accentColor={accentColor}
           analysisData={analysisData}
-          onHtmlUpdate={(newHtml: string) => setGeneratedHtml(newHtml)}
+          onHtmlUpdate={async (newHtml: string) => {
+            setGeneratedHtml(newHtml);
+            if (projectId) {
+              await fetch(`/api/projects/${projectId}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ generatedHtml: newHtml }),
+              });
+            }
+          }}
           isDarkMode={isDarkMode}
         />
       </div>
