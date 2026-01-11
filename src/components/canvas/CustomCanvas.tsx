@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import styles from "./CustomCanvas.module.css";
-import { Menu, ArrowLeft, Send, RotateCcw, Download, Eye, EyeOff } from "lucide-react";
+import { Menu, ArrowLeft, Send, RotateCcw, Download, Moon, Sun } from "lucide-react";
 import { Tldraw, Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import ChatPanel from "./ChatPanel";
@@ -12,10 +12,61 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   const [viewMode, setViewMode] = useState<'canvas' | 'split' | 'preview'>('split');
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [editor, setEditor] = useState<Editor | null>(null);
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
+  // Resizable split state
+  const [splitPosition, setSplitPosition] = useState(50); // Percentage for left panel
+  const [isDragging, setIsDragging] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Handle mouse move for resizing
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!isDragging || !containerRef.current) return;
+
+      const container = containerRef.current;
+      const containerRect = container.getBoundingClientRect();
+      const newPosition = ((e.clientX - containerRect.left) / containerRect.width) * 100;
+
+      // Clamp between 20% and 80%
+      const clampedPosition = Math.min(Math.max(newPosition, 20), 80);
+      setSplitPosition(clampedPosition);
+    };
+
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+  }, [isDragging]);
+
+  const handleResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
 
   const handleMount = useCallback((editorInstance: Editor) => {
     setEditor(editorInstance);
   }, []);
+
+  // Update tldraw dark mode when isDarkMode changes
+  useEffect(() => {
+    if (editor) {
+      editor.user.updateUserPreferences({ colorScheme: isDarkMode ? 'dark' : 'light' });
+    }
+  }, [editor, isDarkMode]);
 
   const handleGenerate = () => {
     if (!editor) return;
@@ -67,7 +118,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className={styles.container}>
+    <div className={`${styles.container} ${isDarkMode ? styles.darkMode : ''}`}>
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.leftSection}>
@@ -99,6 +150,13 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
             >
               Preview
             </button>
+            <button
+              className={styles.darkModeToggle}
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            >
+              {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
           </div>
         </div>
 
@@ -122,17 +180,33 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
 
       {/* Main Content Area */}
       <div className={styles.mainArea}>
-        <div className={styles.splitContainer}>
+        <div className={styles.splitContainer} ref={containerRef}>
           {/* tldraw Canvas */}
           {viewMode !== 'preview' && (
-            <div className={`${styles.canvasSection} ${viewMode === 'canvas' ? styles.fullWidth : ''}`}>
+            <div
+              className={`${styles.canvasSection} ${viewMode === 'canvas' ? styles.fullWidth : ''}`}
+              style={viewMode === 'split' ? { width: `${splitPosition}%`, flex: 'none' } : undefined}
+            >
               <Tldraw onMount={handleMount} />
+            </div>
+          )}
+
+          {/* Resize Handle - only shown in split view */}
+          {viewMode === 'split' && (
+            <div
+              className={`${styles.resizeHandle} ${isDragging ? styles.resizing : ''}`}
+              onMouseDown={handleResizeStart}
+            >
+              <div className={styles.resizeHandleBar} />
             </div>
           )}
 
           {/* Preview Section */}
           {viewMode !== 'canvas' && (
-            <div className={`${styles.previewSection} ${viewMode === 'preview' ? styles.fullWidth : ''}`}>
+            <div
+              className={`${styles.previewSection} ${viewMode === 'preview' ? styles.fullWidth : ''}`}
+              style={viewMode === 'split' ? { width: `${100 - splitPosition}%`, flex: 'none' } : undefined}
+            >
               <div className={styles.previewHeader}>
                 <span>Live Preview</span>
               </div>
@@ -158,6 +232,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
         <ChatPanel
           isCollapsed={isChatCollapsed}
           onToggle={() => setIsChatCollapsed(!isChatCollapsed)}
+          isDarkMode={isDarkMode}
         />
       </div>
     </div>
