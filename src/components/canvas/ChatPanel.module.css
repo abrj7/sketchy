@@ -139,15 +139,33 @@
     font-family: 'Outfit', sans-serif;
     color: #111827;
     cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
 }
 
-.applyBtn:hover {
-    background: linear-gradient(135deg, #4988c4 0%, #005461 100%);
-    border-color: transparent;
+.applyBtn:hover:not(:disabled) {
+    background: #111827;
     color: white;
     transform: translateY(-2px);
     box-shadow: 0 6px 16px -4px rgba(0, 84, 97, 0.3);
+}
+
+.applyBtn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.textarea:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.chip:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .suggestions {
@@ -169,17 +187,17 @@
     white-space: nowrap;
 }
 
-.chip:hover {
-    border-color: rgba(0, 84, 97, 0.4);
-    background: rgba(73, 136, 196, 0.08);
-    color: #005461;
-    transform: translateY(-1px);
+.chip:hover:not(:disabled) {
+    border-color: #111827;
+    background: #f9fafb;
 }
 
 .historySection {
     margin-top: auto;
-    padding-top: 1.5rem;
-    border-top: 1px solid rgba(226, 232, 240, 0.6);
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+    max-height: 300px;
+    overflow-y: auto;
 }
 
 .historyTitle {
@@ -190,130 +208,38 @@
 }
 
 .historyItem {
-    padding: 0.875rem;
-    border: 1.5px solid rgba(226, 232, 240, 0.8);
+    padding: 0.75rem;
     border-radius: 10px;
     margin-bottom: 0.5rem;
-    cursor: pointer;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-    background: rgba(255, 255, 255, 0.8);
 }
 
-.historyItem:hover {
-    border-color: rgba(0, 84, 97, 0.3);
-    background: rgba(73, 136, 196, 0.05);
-    transform: translateY(-1px);
+.userMessage {
+    background: #f3f4f6;
+    border-left: 3px solid #3b82f6;
+}
+
+.aiMessage {
+    background: #ecfdf5;
+    border-left: 3px solid #10b981;
 }
 
 .historyText {
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     color: #111827;
     margin: 0 0 0.25rem 0;
-    font-weight: 500;
+    word-break: break-word;
 }
 
 .timestamp {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     color: #9ca3af;
 }
 
-/* ================================
-   DARK MODE STYLES
-   ================================ */
-
-.panel.darkMode {
-    background: #1a1a1a;
-    border-left: 1px solid rgba(255, 255, 255, 0.08);
+.spinning {
+    animation: spin 1s linear infinite;
 }
 
-.panel.darkMode .expandBtn {
-    background: #2a2a2a;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #94a3b8;
-}
-
-.panel.darkMode .expandBtn:hover {
-    background: #3a3a3a;
-    color: #4988c4;
-}
-
-.panel.darkMode .header {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.panel.darkMode .title {
-    color: #f1f5f9;
-}
-
-.panel.darkMode .closeBtn {
-    color: #94a3b8;
-}
-
-.panel.darkMode .closeBtn:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #f1f5f9;
-}
-
-.panel.darkMode .textarea {
-    background: #2a2a2a;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #f1f5f9;
-}
-
-.panel.darkMode .textarea:focus {
-    border-color: rgba(73, 136, 196, 0.5);
-}
-
-.panel.darkMode .textarea::placeholder {
-    color: #64748b;
-}
-
-.panel.darkMode .applyBtn {
-    background: transparent;
-    border-color: rgba(255, 255, 255, 0.2);
-    color: #f1f5f9;
-}
-
-.panel.darkMode .applyBtn:hover {
-    background: linear-gradient(135deg, #4988c4 0%, #005461 100%);
-    border-color: transparent;
-    color: white;
-}
-
-.panel.darkMode .chip {
-    background: #2a2a2a;
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #94a3b8;
-}
-
-.panel.darkMode .chip:hover {
-    background: #3a3a3a;
-    border-color: rgba(73, 136, 196, 0.4);
-    color: #4988c4;
-}
-
-.panel.darkMode .historySection {
-    border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.panel.darkMode .historyTitle {
-    color: #64748b;
-}
-
-.panel.darkMode .historyItem {
-    background: #2a2a2a;
-    border-color: rgba(255, 255, 255, 0.1);
-}
-
-.panel.darkMode .historyItem:hover {
-    background: #3a3a3a;
-    border-color: rgba(73, 136, 196, 0.3);
-}
-
-.panel.darkMode .historyText {
-    color: #f1f5f9;
-}
-
-.panel.darkMode .timestamp {
-    color: #64748b;
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
