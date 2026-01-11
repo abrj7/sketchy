@@ -11,9 +11,15 @@ import { getCurrentUser } from "@/lib/auth";
 // View states: AUTH (login/signup) -> LANDING -> DASHBOARD -> CANVAS
 type ViewState = "AUTH" | "LANDING" | "DASHBOARD" | "CANVAS";
 
+interface CurrentProject {
+  id: string;
+  name: string;
+}
+
 export default function HomePage() {
   // Start with AUTH view - user must login/signup first
   const [view, setView] = useState<ViewState>("AUTH");
+  const [currentProject, setCurrentProject] = useState<CurrentProject | null>(null);
 
   // Check for existing session on page load
   useEffect(() => {
@@ -28,6 +34,12 @@ export default function HomePage() {
     setView("AUTH");
   };
 
+  // Handle opening a project
+  const handleOpenProject = (projectId: string, projectName: string) => {
+    setCurrentProject({ id: projectId, name: projectName });
+    setView("CANVAS");
+  };
+
   // Auth page - login/signup
   if (view === "AUTH") {
     return <AuthPage onAuthSuccess={() => setView("LANDING")} />;
@@ -35,12 +47,28 @@ export default function HomePage() {
 
   // Dashboard - project gallery
   if (view === "DASHBOARD") {
-    return <Dashboard onCreateNew={() => setView("CANVAS")} onHome={() => setView("LANDING")} onLogout={handleLogout} />;
+    return (
+      <Dashboard
+        onCreateNew={() => setView("CANVAS")}
+        onHome={() => setView("LANDING")}
+        onLogout={handleLogout}
+        onOpenProject={handleOpenProject}
+      />
+    );
   }
 
   // Canvas - drawing area
   if (view === "CANVAS") {
-    return <CustomCanvas onBack={() => setView("DASHBOARD")} />;
+    return (
+      <CustomCanvas
+        onBack={() => {
+          setCurrentProject(null);
+          setView("DASHBOARD");
+        }}
+        projectId={currentProject?.id}
+        projectName={currentProject?.name}
+      />
+    );
   }
 
   // Landing page (shown after auth)

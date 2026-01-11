@@ -7,6 +7,7 @@ import { Tldraw, Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import ChatPanel from "./ChatPanel";
 import { useStore } from "@/lib/store";
+import NamePromptModal from "@/components/ui/NamePromptModal";
 
 // Style presets
 const STYLE_PRESETS = [
@@ -20,33 +21,45 @@ const STYLE_PRESETS = [
 
 type StylePreset = typeof STYLE_PRESETS[number]['id'];
 
-export default function CustomCanvas({ onBack }: { onBack: () => void }) {
-  const [isChatCollapsed, setIsChatCollapsed] = useState(true); // Collapsed by default
+interface CustomCanvasProps {
+  onBack: () => void;
+  projectId?: string;
+  projectName?: string;
+}
+
+export default function CustomCanvas({ onBack, projectId, projectName = "Untitled document" }: CustomCanvasProps) {
+  const [isChatCollapsed, setIsChatCollapsed] = useState(true);
   const [viewMode, setViewMode] = useState<'canvas' | 'split' | 'preview'>('split');
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [editor, setEditor] = useState<Editor | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
-  
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [currentProjectName, setCurrentProjectName] = useState(projectName);
+
   // Style customization state
   const [websiteStyle, setWebsiteStyle] = useState<StylePreset>('modern');
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
   const [accentColor, setAccentColor] = useState('#3b82f6');
-  
+
   // Analysis data from AI (for dynamic suggestions)
   const [analysisData, setAnalysisData] = useState<{
     annotations: string[];
     layout: string;
     elements: string[];
   } | null>(null);
-  
+
   // Store for loading state
   const { isGenerating, setGenerating } = useStore();
-  
+
   // Resize state for split view
   const [isDragging, setIsDragging] = useState(false);
-  const [splitPosition, setSplitPosition] = useState(50); // percentage
+  const [splitPosition, setSplitPosition] = useState(50);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Auto-save refs
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSaveRef = useRef<string>("");
 
   // Handle resize start
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -58,11 +71,11 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   useEffect(() => {
     const handleResize = (e: MouseEvent) => {
       if (!isDragging || !containerRef.current) return;
-      
+
       const container = containerRef.current;
       const rect = container.getBoundingClientRect();
       const newPosition = ((e.clientX - rect.left) / rect.width) * 100;
-      
+
       // Clamp between 20% and 80%
       setSplitPosition(Math.max(20, Math.min(80, newPosition)));
     };
@@ -84,7 +97,107 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
 
   const handleMount = useCallback((editorInstance: Editor) => {
     setEditor(editorInstance);
+
+    // Set up auto-save listener
+    if (projectId) {
+      editorInstance.sideEffects.registerAfterChangeHandler('shape', () => {
+        // Debounced auto-save
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(() => {
+          saveCanvas(editorInstance);
+        }, 2000); // Save 2 seconds after last edit
+      });
+    }
+  }, [projectId]);
+
+  // Auto-save function
+  const saveCanvas = async (ed: Editor) => {
+    if (!projectId) return;
+
+    try {
+      // Get all records from the store
+      const allRecords = ed.store.allRecords();
+      const snapshotJson = JSON.stringify(allRecords);
+
+      // Don't save if nothing changed
+      if (snapshotJson === lastSaveRef.current) return;
+      lastSaveRef.current = snapshotJson;
+
+      await fetch(`/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          canvasData: { records: allRecords },
+          generatedHtml,
+        }),
+      });
+      console.log("✅ Auto-saved");
+    } catch (error) {
+      console.error("Auto-save failed:", error);
+    }
+  };
+
+  // Load project on mount
+  useEffect(() => {
+    if (projectId && editor) {
+      fetch(`/api/projects/${projectId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.project?.canvasData?.records) {
+            // Load the records into the store
+            const records = data.project.canvasData.records;
+            editor.store.put(records);
+          }
+          if (data.project?.generatedHtml) {
+            setGeneratedHtml(data.project.generatedHtml);
+          }
+          if (data.project?.name) {
+            setCurrentProjectName(data.project.name);
+          }
+        })
+        .catch(err => console.error("Failed to load project:", err));
+    }
+  }, [projectId, editor]);
+
+  // Cleanup auto-save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, []);
+
+  // Handle back button - show name modal if untitled
+  const handleBack = async () => {
+    // Save any pending changes
+    if (editor && projectId) {
+      await saveCanvas(editor);
+    }
+
+    // Show name prompt if untitled
+    if (currentProjectName.startsWith("Untitled document")) {
+      setShowNameModal(true);
+    } else {
+      onBack();
+    }
+  };
+
+  // Handle name save
+  const handleNameSave = async (newName: string) => {
+    if (projectId && newName !== currentProjectName) {
+      await fetch(`/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      setCurrentProjectName(newName);
+    }
+    setShowNameModal(false);
+    onBack();
+  };
 
   // Update tldraw dark mode when isDarkMode changes
   useEffect(() => {
@@ -104,7 +217,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
     try {
       // Get all shape IDs on the canvas
       const shapeIds = editor.getCurrentPageShapeIds();
-      
+
       if (shapeIds.size === 0) {
         alert("Please draw something on the canvas first!");
         setGenerating(false);
@@ -144,15 +257,15 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
         canvas.width = svgWidth;
         canvas.height = svgHeight;
         const ctx = canvas.getContext('2d');
-        
+
         if (ctx) {
           // Fill white background
           ctx.fillStyle = 'white';
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0);
-          
+
           const base64Image = canvas.toDataURL('image/png');
-          
+
           console.log("📸 Canvas exported! Sending to API...");
 
           try {
@@ -180,7 +293,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                 console.log("📝 Red Annotations Found:", data.analysis.annotations);
                 console.log("📐 Layout Structure:", data.analysis.layout);
                 console.log("🧩 Elements Created:", data.analysis.elements);
-                
+
                 // Store analysis data for dynamic suggestions
                 setAnalysisData({
                   annotations: data.analysis.annotations || [],
@@ -188,7 +301,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                   elements: data.analysis.elements || []
                 });
               }
-              
+
               // Combine HTML, CSS, and JS into a single document
               const fullHtml = `
                 <!DOCTYPE html>
@@ -203,7 +316,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                 </html>
               `;
               setGeneratedHtml(fullHtml);
-              
+
               // Auto-switch to split view if in canvas-only mode
               if (viewMode === 'canvas') {
                 setViewMode('split');
@@ -214,7 +327,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
             alert("Failed to connect to API");
           }
         }
-        
+
         URL.revokeObjectURL(url);
         setGenerating(false);
       };
@@ -259,14 +372,14 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.leftSection}>
-          <button onClick={onBack} className={styles.iconBtn} title="Back to dashboard">
+          <button onClick={handleBack} className={styles.iconBtn} title="Back to dashboard">
             <ArrowLeft size={20} />
           </button>
           <button className={styles.iconBtn} title="Menu">
             <Menu size={20} />
           </button>
-          <button 
-            className={`${styles.iconBtn} ${showSettings ? styles.activeIconBtn : ''}`} 
+          <button
+            className={`${styles.iconBtn} ${showSettings ? styles.activeIconBtn : ''}`}
             title="Style Settings"
             onClick={() => setShowSettings(!showSettings)}
           >
@@ -305,9 +418,9 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
         </div>
 
         <div className={styles.rightSection}>
-          <button 
-            className={styles.secondaryBtn} 
-            onClick={handleRegenerate} 
+          <button
+            className={styles.secondaryBtn}
+            onClick={handleRegenerate}
             title="Regenerate"
             disabled={isGenerating}
           >
@@ -320,8 +433,8 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
             <span>Export</span>
           </button>
 
-          <button 
-            className={styles.generateBtn} 
+          <button
+            className={styles.generateBtn}
             onClick={handleGenerate}
             disabled={isGenerating}
             style={{ opacity: isGenerating ? 0.7 : 1 }}
@@ -341,7 +454,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
               <X size={18} />
             </button>
           </div>
-          
+
           <div className={styles.settingsContent}>
             {/* Style Presets */}
             <div className={styles.settingsSection}>
@@ -359,7 +472,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                 ))}
               </div>
             </div>
-            
+
             {/* Colors */}
             <div className={styles.settingsSection}>
               <label className={styles.settingsLabel}>Background Color</label>
@@ -373,7 +486,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                 <span className={styles.colorValue}>{backgroundColor}</span>
               </div>
             </div>
-            
+
             <div className={styles.settingsSection}>
               <label className={styles.settingsLabel}>Accent Color</label>
               <div className={styles.colorPicker}>
@@ -395,12 +508,12 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
         <div className={styles.splitContainer} ref={containerRef}>
           {/* tldraw Canvas */}
           {viewMode !== 'preview' && (
-            <div 
+            <div
               className={`${styles.canvasSection} ${viewMode === 'canvas' ? styles.fullWidth : ''}`}
               style={viewMode === 'split' ? { width: `${splitPosition}%`, flex: 'none' } : undefined}
             >
-              <Tldraw 
-                onMount={handleMount} 
+              <Tldraw
+                onMount={handleMount}
                 persistenceKey="webber-canvas"
               />
             </div>
@@ -456,6 +569,14 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
           isDarkMode={isDarkMode}
         />
       </div>
+
+      {/* Name Prompt Modal */}
+      <NamePromptModal
+        isOpen={showNameModal}
+        currentName={currentProjectName}
+        onSave={handleNameSave}
+        onCancel={() => setShowNameModal(false)}
+      />
     </div>
   );
 }
