@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import styles from "./CustomCanvas.module.css";
-import { Menu, ArrowLeft, Send, RotateCcw, Download, Loader2, Settings, X, Sun, Moon } from "lucide-react";
+import { Menu, ArrowLeft, Send, RotateCcw, Download, Loader2, Settings, X, Sun, Moon, Rocket } from "lucide-react";
 import { Tldraw, Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import ChatPanel from "./ChatPanel";
@@ -163,6 +163,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
       if (!svgElement) {
         alert("Failed to export canvas");
         setGenerating(false);
+        clearTimeout(timeoutId);
         return;
       }
 
@@ -213,7 +214,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                 style: websiteStyle,
                 backgroundColor,
                 accentColor,
-                currentHtml: isRegenerate ? generatedHtml : null,
+                currentHtml: isRegenerate ? generatedHtml : null, // Pass existing HTML for updates
               }),
             });
 
@@ -286,6 +287,51 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
     a.download = "sketchy-website.html";
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleDeploy = async () => {
+    if (!generatedHtml) {
+      alert("No generated code to deploy yet!");
+      return;
+    }
+    setShowDeployModal(true);
+  };
+
+  const handleDeployConfirm = async () => {
+    if (!deployName.trim()) {
+      alert("Please enter a project name");
+      return;
+    }
+
+    setIsDeploying(true);
+    setDeployedUrl(null);
+    setGithubUrl(null);
+
+    try {
+      const response = await fetch("/api/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          html: generatedHtml,
+          projectName: deployName,
+          pushToGitHub,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        alert("Deploy error: " + data.error);
+      } else {
+        setDeployedUrl(data.url);
+        setGithubUrl(data.githubUrl || null);
+      }
+    } catch (err) {
+      console.error("Deploy error:", err);
+      alert("Failed to deploy");
+    } finally {
+      setIsDeploying(false);
+    }
   };
 
   return (
@@ -536,6 +582,114 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
           isDarkMode={isDarkMode}
         />
       </div>
+
+      {/* Deploy Modal */}
+      {showDeployModal && (
+        <div className={styles.modalOverlay} onClick={() => !isDeploying && setShowDeployModal(false)}>
+          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h3>Deploy to Vercel</h3>
+              <button
+                className={styles.iconBtn}
+                onClick={() => !isDeploying && setShowDeployModal(false)}
+                disabled={isDeploying}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className={styles.modalContent}>
+              {!deployedUrl ? (
+                <>
+                  <label className={styles.modalLabel}>Project Name</label>
+                  <input
+                    type="text"
+                    value={deployName}
+                    onChange={(e) => setDeployName(e.target.value)}
+                    placeholder="my-awesome-website"
+                    className={styles.modalInput}
+                    disabled={isDeploying}
+                  />
+                  <p className={styles.modalHint}>
+                    Your site will be deployed to: <strong>{deployName || "project-name"}.vercel.app</strong>
+                  </p>
+
+                  <label className={styles.checkboxLabel}>
+                    <input
+                      type="checkbox"
+                      checked={pushToGitHub}
+                      onChange={(e) => setPushToGitHub(e.target.checked)}
+                      disabled={isDeploying}
+                      className={styles.checkbox}
+                    />
+                    <span>Also push to GitHub repository</span>
+                  </label>
+
+                  <button
+                    className={styles.deployConfirmBtn}
+                    onClick={handleDeployConfirm}
+                    disabled={isDeploying || !deployName.trim()}
+                  >
+                    {isDeploying ? (
+                      <>
+                        <Loader2 size={16} className={styles.spinning} />
+                        <span>Deploying...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Rocket size={16} />
+                        <span>Deploy Now</span>
+                      </>
+                    )}
+                  </button>
+                </>
+              ) : (
+                <div className={styles.deploySuccess}>
+                  <div className={styles.successIcon}>🎉</div>
+                  <h4>Deployed Successfully!</h4>
+
+                  {githubUrl && (
+                    <>
+                      <label className={styles.urlLabel}>GitHub Repository</label>
+                      <a
+                        href={githubUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={styles.deployUrl}
+                      >
+                        {githubUrl}
+                      </a>
+                    </>
+                  )}
+
+                  <label className={styles.urlLabel}>Vercel Deployment</label>
+                  <a
+                    href={deployedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={styles.deployUrl}
+                  >
+                    {deployedUrl}
+                  </a>
+
+                  <button
+                    className={styles.secondaryBtn}
+                    onClick={() => {
+                      setShowDeployModal(false);
+                      setDeployedUrl(null);
+                      setGithubUrl(null);
+                      setDeployName("");
+                      setPushToGitHub(false);
+                    }}
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
