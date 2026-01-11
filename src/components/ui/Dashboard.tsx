@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Plus,
   Image as ImageIcon,
@@ -15,14 +15,30 @@ import {
   SlidersHorizontal
 } from "lucide-react";
 import styles from "./Dashboard.module.css";
+import UserProfile from "./UserProfile";
+import { getCurrentUser, User } from "@/lib/auth";
 
 interface DashboardProps {
   onCreateNew: () => void;
   onHome: () => void;
+  onLogout?: () => void;
 }
 
-export default function Dashboard({ onCreateNew, onHome }: DashboardProps) {
+// Get time-based greeting
+function getGreeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
+}
+
+export default function Dashboard({ onCreateNew, onHome, onLogout }: DashboardProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
+
+  useEffect(() => {
+    setUser(getCurrentUser());
+  }, []);
 
   const recentWebsites = [
     {
@@ -86,13 +102,13 @@ export default function Dashboard({ onCreateNew, onHome }: DashboardProps) {
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: '2rem' }}>
             <span style={{ fontSize: '0.875rem', fontWeight: 700, color: '#94a3b8', cursor: 'pointer' }} className="hover:text-black transition-colors">Give Feedback</span>
-            <div className={styles['avatar-circle']}>AJ</div>
+            <UserProfile onLogout={onLogout} />
           </div>
         </header>
 
         {/* Editorial Greeting */}
         <section>
-          <h1 className={styles['greeting-serif']}>Good morning, Aidan.</h1>
+          <h1 className={styles['greeting-serif']}>{getGreeting()}, {user?.name?.split(' ')[0] || 'Creator'}.</h1>
           <p className={styles['sub-greeting']}>Your creative workspace is ready. Pick up where you left off.</p>
 
           <div className={styles['search-area']}>

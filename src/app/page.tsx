@@ -23,6 +23,11 @@ export default function HomePage() {
     }
   }, []);
 
+  // Handle logout - return to auth page
+  const handleLogout = () => {
+    setView("AUTH");
+  };
+
   // Auth page - login/signup
   if (view === "AUTH") {
     return <AuthPage onAuthSuccess={() => setView("LANDING")} />;
@@ -30,7 +35,7 @@ export default function HomePage() {
 
   // Dashboard - project gallery
   if (view === "DASHBOARD") {
-    return <Dashboard onCreateNew={() => setView("CANVAS")} onHome={() => setView("LANDING")} />;
+    return <Dashboard onCreateNew={() => setView("CANVAS")} onHome={() => setView("LANDING")} onLogout={handleLogout} />;
   }
 
   // Canvas - drawing area
