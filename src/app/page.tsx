@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Home, Info, LayoutGrid, HandHeart, HelpCircle, Users } from "lucide-react";
 import styles from "./page.module.css";
 import Dashboard from "@/components/ui/Dashboard";
 import CustomCanvas from "@/components/canvas/CustomCanvas";
@@ -95,31 +94,9 @@ export default function HomePage() {
           Draw it. Build it. Ship it.
         </div>
 
-        {/* Bottom Dock */}
-        <div className={styles.dock}>
-          <div className={styles.dockItem}>
-            <Home size={20} />
-          </div>
-          <div className={styles.dockItem}>
-            <Info size={20} />
-          </div>
-          <div className={styles.dockItem}>
-            <LayoutGrid size={20} />
-          </div>
-          <div className={styles.dockItem}>
-            <HandHeart size={20} />
-          </div>
-          <div className={styles.dockItem}>
-            <HelpCircle size={20} />
-          </div>
-          <div className={styles.dockItem}>
-            <Users size={20} />
-          </div>
-        </div>
 
-        <div style={{ position: 'absolute', bottom: '1rem', right: '2rem', fontSize: '0.8rem', opacity: 0.5 }}>
-          MLH Code of Conduct
-        </div>
+
+
       </div>
     </main>
   );

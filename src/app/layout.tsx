@@ -2,7 +2,7 @@ import "@/styles/globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Flowboard | Draw Your Website",
+  title: "Sketchy | Draw Your Website",
   description: "Generate beautiful websites by drawing on a canvas.",
 };
 
