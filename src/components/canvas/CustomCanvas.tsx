@@ -21,7 +21,7 @@ const STYLE_PRESETS = [
 type StylePreset = typeof STYLE_PRESETS[number]['id'];
 
 export default function CustomCanvas({ onBack }: { onBack: () => void }) {
-  const [isChatCollapsed, setIsChatCollapsed] = useState(false);
+  const [isChatCollapsed, setIsChatCollapsed] = useState(true); // Collapsed by default
   const [viewMode, setViewMode] = useState<'canvas' | 'split' | 'preview'>('split');
   const [generatedHtml, setGeneratedHtml] = useState("");
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -31,6 +31,13 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   const [websiteStyle, setWebsiteStyle] = useState<StylePreset>('modern');
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
   const [accentColor, setAccentColor] = useState('#3b82f6');
+  
+  // Analysis data from AI (for dynamic suggestions)
+  const [analysisData, setAnalysisData] = useState<{
+    annotations: string[];
+    layout: string;
+    elements: string[];
+  } | null>(null);
   
   // Store for loading state
   const { isGenerating, setGenerating } = useStore();
@@ -120,6 +127,21 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
               console.error("API Error:", data.error);
               alert("Error: " + data.error);
             } else {
+              // Log the AI's analysis of the wireframe
+              if (data.analysis) {
+                console.log("🎨 AI WIREFRAME ANALYSIS:");
+                console.log("📝 Red Annotations Found:", data.analysis.annotations);
+                console.log("📐 Layout Structure:", data.analysis.layout);
+                console.log("🧩 Elements Created:", data.analysis.elements);
+                
+                // Store analysis data for dynamic suggestions
+                setAnalysisData({
+                  annotations: data.analysis.annotations || [],
+                  layout: data.analysis.layout || "",
+                  elements: data.analysis.elements || []
+                });
+              }
+              
               // Combine HTML, CSS, and JS into a single document
               const fullHtml = `
                 <!DOCTYPE html>
@@ -320,7 +342,10 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
           {/* tldraw Canvas */}
           {viewMode !== 'preview' && (
             <div className={`${styles.canvasSection} ${viewMode === 'canvas' ? styles.fullWidth : ''}`}>
-              <Tldraw onMount={handleMount} />
+              <Tldraw 
+                onMount={handleMount} 
+                persistenceKey="webber-canvas"
+              />
             </div>
           )}
 
@@ -352,6 +377,12 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
         <ChatPanel
           isCollapsed={isChatCollapsed}
           onToggle={() => setIsChatCollapsed(!isChatCollapsed)}
+          generatedHtml={generatedHtml}
+          websiteStyle={websiteStyle}
+          backgroundColor={backgroundColor}
+          accentColor={accentColor}
+          analysisData={analysisData}
+          onHtmlUpdate={(newHtml: string) => setGeneratedHtml(newHtml)}
         />
       </div>
     </div>

@@ -78,9 +78,21 @@ export async function POST(req: Request) {
          - Size images proportionally to the drawn rectangle
 
       ## OUTPUT FORMAT (JSON only, no markdown):
-      {"html": "...", "css": "...", "js": ""}
+      {
+        "html": "BODY CONTENT ONLY - no DOCTYPE, html, head, or body tags. Just the inner content.",
+        "css": "All CSS styles",
+        "js": "Any JavaScript if needed",
+        "analysis": {
+          "annotations": ["list of red annotation texts you found and how you interpreted them"],
+          "layout": "brief description of the layout structure (e.g., 'header on top, 3-column grid below, footer at bottom')",
+          "elements": ["list of elements you created (e.g., 'navbar', 'hero image', 'call-to-action button', 'feature cards')"]
+        }
+      }
 
-      IMPORTANT: Think like a designer interpreting a client's rough sketch. The user's drawing shows their INTENT and LAYOUT, not a pixel-perfect specification. Create a real, polished website that brings their vision to life using the style and colors they selected.
+      IMPORTANT: 
+      - The "html" field must contain ONLY the body content (divs, sections, etc.) - NOT a full HTML document
+      - Think like a designer interpreting a client's rough sketch
+      - Create a real, polished website using the style and colors they selected
     `;
 
     const parts: any[] = [
@@ -96,14 +108,42 @@ export async function POST(req: Request) {
 
     const text = response.text || "";
     
+    console.log("Raw Gemini response:", text.substring(0, 500)); // Log first 500 chars for debugging
+    
     // Clean and parse the response
     try {
-      const cleanedText = text.replace(/```json/g, "").replace(/```/g, "").trim();
+      // Remove markdown code blocks if present
+      let cleanedText = text
+        .replace(/```json\s*/gi, "")
+        .replace(/```\s*/g, "")
+        .trim();
+      
+      // Try to extract JSON object if it's wrapped in other text
+      const jsonMatch = cleanedText.match(/\{[\s\S]*"html"[\s\S]*"css"[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanedText = jsonMatch[0];
+      }
+      
       const code = JSON.parse(cleanedText);
       return NextResponse.json(code);
     } catch (parseError) {
       console.error("Failed to parse Gemini response:", text);
-      return NextResponse.json({ error: "Invalid AI response format", raw: text }, { status: 500 });
+      
+      // Try one more approach: look for JSON anywhere in the response
+      try {
+        const fallbackMatch = text.match(/\{[\s\S]*?"html"\s*:\s*"[\s\S]*?"[\s\S]*?"css"\s*:\s*"[\s\S]*?"[\s\S]*?\}/);
+        if (fallbackMatch) {
+          const code = JSON.parse(fallbackMatch[0]);
+          return NextResponse.json(code);
+        }
+      } catch (e) {
+        // Ignore fallback parsing error
+      }
+      
+      return NextResponse.json({ 
+        error: "Invalid AI response format. The AI may have returned malformed JSON.", 
+        raw: text.substring(0, 1000) // Include first 1000 chars of raw response for debugging
+      }, { status: 500 });
     }
   } catch (error: any) {
     console.error("Gemini API Error:", error);
