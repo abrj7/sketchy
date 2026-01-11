@@ -1,20 +1,8 @@
 /**
  * Authentication Library
  * 
- * TODO: Implement authentication backend
- * 
- * This file should contain:
- * - signIn(email, password): Promise<User>
- * - signUp(name, email, password): Promise<User>
- * - signOut(): Promise<void>
- * - getCurrentUser(): User | null
- * - OAuth providers (Google, GitHub)
- * 
- * Suggested implementations:
- * - Firebase Auth
- * - NextAuth.js
- * - Supabase Auth
- * - Custom JWT with MongoDB
+ * Uses MongoDB + Mongoose for user storage with bcrypt password hashing.
+ * Session persists in localStorage so users stay logged in after refresh.
  */
 
 export interface User {
@@ -24,37 +12,127 @@ export interface User {
   avatar?: string;
 }
 
-// Placeholder functions - implement these with your auth provider
-
-export async function signIn(email: string, password: string): Promise<User | null> {
-  // TODO: Implement login logic
-  console.log("signIn called with:", email);
-  throw new Error("Not implemented - connect to auth provider");
+export interface AuthResponse {
+  user: User | null;
+  error?: string;
 }
 
-export async function signUp(name: string, email: string, password: string): Promise<User | null> {
-  // TODO: Implement signup logic
-  console.log("signUp called with:", name, email);
-  throw new Error("Not implemented - connect to auth provider");
+const STORAGE_KEY = "webber_user";
+
+// Helper to safely access localStorage (only available in browser)
+function getStoredUser(): User | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
 }
 
+function saveUserToStorage(user: User | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (user) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(user));
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  } catch {
+    // Storage not available
+  }
+}
+
+// Initialize from localStorage
+let currentUser: User | null = null;
+
+/**
+ * Sign in with email and password
+ */
+export async function signIn(email: string, password: string): Promise<AuthResponse> {
+  try {
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { user: null, error: data.error || "Login failed" };
+    }
+
+    currentUser = data.user;
+    saveUserToStorage(data.user);
+    return { user: data.user };
+  } catch (error) {
+    console.error("signIn error:", error);
+    return { user: null, error: "Network error. Please try again." };
+  }
+}
+
+/**
+ * Sign up with name, email, and password
+ * Password requirements: 8+ chars, 1 uppercase, 1 lowercase, 1 special char
+ */
+export async function signUp(name: string, email: string, password: string): Promise<AuthResponse> {
+  try {
+    const response = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      return { user: null, error: data.error || "Signup failed" };
+    }
+
+    currentUser = data.user;
+    saveUserToStorage(data.user);
+    return { user: data.user };
+  } catch (error) {
+    console.error("signUp error:", error);
+    return { user: null, error: "Network error. Please try again." };
+  }
+}
+
+/**
+ * Sign out the current user
+ */
 export async function signOut(): Promise<void> {
-  // TODO: Implement logout logic
-  console.log("signOut called");
-  throw new Error("Not implemented - connect to auth provider");
+  currentUser = null;
+  saveUserToStorage(null);
 }
 
+/**
+ * Get the currently logged in user (checks localStorage if not in memory)
+ */
 export function getCurrentUser(): User | null {
-  // TODO: Check session/token for current user
-  return null;
+  if (!currentUser) {
+    currentUser = getStoredUser();
+  }
+  return currentUser;
 }
 
-export async function signInWithGoogle(): Promise<User | null> {
-  // TODO: Implement Google OAuth
-  throw new Error("Not implemented - connect to auth provider");
+/**
+ * Set the current user (for manual session management)
+ */
+export function setCurrentUser(user: User | null): void {
+  currentUser = user;
+  saveUserToStorage(user);
 }
 
-export async function signInWithGitHub(): Promise<User | null> {
+/**
+ * Check if user is authenticated
+ */
+export function isAuthenticated(): boolean {
+  return getCurrentUser() !== null || getGitHubUser() !== null;
+}
+
+export async function signInWithGitHub(): Promise<void> {
   const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID;
   if (!clientId) {
     throw new Error("GitHub OAuth not configured");
@@ -66,7 +144,6 @@ export async function signInWithGitHub(): Promise<User | null> {
   const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${scope}`;
 
   window.location.href = githubAuthUrl;
-  return null;
 }
 
 // Helper function to get GitHub token from cookies
@@ -94,4 +171,9 @@ export function getGitHubUser(): { id: number; login: string; name: string; avat
   } catch {
     return null;
   }
+}
+
+// OAuth providers - not implemented yet
+export async function signInWithGoogle(): Promise<AuthResponse> {
+  return { user: null, error: "Google OAuth not implemented yet" };
 }

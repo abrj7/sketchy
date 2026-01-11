@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import styles from "./AuthPage.module.css";
-import { Mail, Lock, User, ArrowRight } from "lucide-react";
-import { signInWithGitHub } from "@/lib/auth";
+import { Mail, Lock, User, ArrowRight, Loader2 } from "lucide-react";
+import { signIn, signUp, signInWithGitHub } from "@/lib/auth";
 
 interface AuthPageProps {
   onAuthSuccess: () => void;
@@ -14,13 +14,36 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
+  const [error, setError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Backend integration - for now, just navigate to dashboard
-    // Your colleague can implement: await signIn(email, password) or await signUp(name, email, password)
-    console.log("Auth submitted:", { mode, email, password, name });
-    onAuthSuccess();
+    setError("");
+    setIsLoading(true);
+
+    try {
+      if (mode === "signup") {
+        const result = await signUp(name, email, password);
+        if (result.error) {
+          setError(result.error);
+          setIsLoading(false);
+          return;
+        }
+      } else {
+        const result = await signIn(email, password);
+        if (result.error) {
+          setError(result.error);
+          setIsLoading(false);
+          return;
+        }
+      }
+      // Success - proceed to dashboard
+      onAuthSuccess();
+    } catch (err) {
+      setError("Something went wrong. Please try again.");
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -38,17 +61,24 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
           <div className={styles.tabs}>
             <button
               className={`${styles.tab} ${mode === "login" ? styles.activeTab : ""}`}
-              onClick={() => setMode("login")}
+              onClick={() => { setMode("login"); setError(""); }}
             >
               Login
             </button>
             <button
               className={`${styles.tab} ${mode === "signup" ? styles.activeTab : ""}`}
-              onClick={() => setMode("signup")}
+              onClick={() => { setMode("signup"); setError(""); }}
             >
               Sign Up
             </button>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className={styles.error}>
+              {error}
+            </div>
+          )}
 
           {/* Form */}
           <form onSubmit={handleSubmit} className={styles.form}>
@@ -62,6 +92,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                   onChange={(e) => setName(e.target.value)}
                   className={styles.input}
                   required
+                  disabled={isLoading}
                 />
               </div>
             )}
@@ -75,6 +106,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 className={styles.input}
                 required
+                disabled={isLoading}
               />
             </div>
 
@@ -87,13 +119,29 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
                 onChange={(e) => setPassword(e.target.value)}
                 className={styles.input}
                 required
-                minLength={6}
+                minLength={8}
+                disabled={isLoading}
               />
             </div>
 
-            <button type="submit" className={styles.submitBtn}>
-              {mode === "login" ? "Login" : "Create Account"}
-              <ArrowRight size={18} />
+            {mode === "signup" && (
+              <p className={styles.passwordHint}>
+                Password: 8+ chars, uppercase, lowercase, special character
+              </p>
+            )}
+
+            <button type="submit" className={styles.submitBtn} disabled={isLoading}>
+              {isLoading ? (
+                <>
+                  <Loader2 size={18} className={styles.spinner} />
+                  {mode === "login" ? "Logging in..." : "Creating account..."}
+                </>
+              ) : (
+                <>
+                  {mode === "login" ? "Login" : "Create Account"}
+                  <ArrowRight size={18} />
+                </>
+              )}
             </button>
           </form>
 
@@ -102,9 +150,9 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
             <span>or continue with</span>
           </div>
 
-          {/* OAuth Buttons (UI only - backend to implement) */}
+          {/* OAuth Buttons */}
           <div className={styles.oauthButtons}>
-            <button className={styles.oauthBtn} onClick={onAuthSuccess}>
+            <button className={styles.oauthBtn} disabled title="Google login not yet implemented">
               <svg viewBox="0 0 24 24" width="20" height="20">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
                 <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
@@ -127,7 +175,7 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
           {mode === "login" ? "Don't have an account? " : "Already have an account? "}
           <button
             className={styles.switchBtn}
-            onClick={() => setMode(mode === "login" ? "signup" : "login")}
+            onClick={() => { setMode(mode === "login" ? "signup" : "login"); setError(""); }}
           >
             {mode === "login" ? "Sign up" : "Log in"}
           </button>

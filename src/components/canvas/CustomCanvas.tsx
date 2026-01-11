@@ -2,11 +2,26 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import styles from "./CustomCanvas.module.css";
-import { Menu, ArrowLeft, Send, RotateCcw, Download, Loader2, Settings, X, Sun, Moon, Rocket } from "lucide-react";
+import { 
+  Menu, 
+  ArrowLeft, 
+  Send, 
+  RotateCcw, 
+  Download, 
+  Loader2, 
+  Settings, 
+  X, 
+  Sun, 
+  Moon, 
+  Rocket, 
+  History, 
+  Clock 
+} from "lucide-react";
 import { Tldraw, Editor } from "tldraw";
 import "tldraw/tldraw.css";
 import ChatPanel from "./ChatPanel";
 import { useStore } from "@/lib/store";
+import NamePromptModal from "@/components/ui/NamePromptModal";
 
 // Style presets
 const STYLE_PRESETS = [
@@ -20,7 +35,13 @@ const STYLE_PRESETS = [
 
 type StylePreset = typeof STYLE_PRESETS[number]['id'];
 
-export default function CustomCanvas({ onBack }: { onBack: () => void }) {
+interface CustomCanvasProps {
+  onBack: () => void;
+  projectId?: string;
+  projectName?: string;
+}
+
+export default function CustomCanvas({ onBack, projectId, projectName = "Untitled document" }: CustomCanvasProps) {
   const [isChatCollapsed, setIsChatCollapsed] = useState(true); // Collapsed by default
   const [viewMode, setViewMode] = useState<'canvas' | 'split' | 'preview'>('canvas');
   const [showWelcome, setShowWelcome] = useState(true); // Welcome overlay state
@@ -28,6 +49,15 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   const [editor, setEditor] = useState<Editor | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  
+  // Backend/Persistence State
+  const [showNameModal, setShowNameModal] = useState(false);
+  const [currentProjectName, setCurrentProjectName] = useState(projectName);
+  const [showHistory, setShowHistory] = useState(false);
+  const [versions, setVersions] = useState<Array<{ _id: string; versionNumber: number; createdAt: string }>>([]);
+  const [isLoadingVersions, setIsLoadingVersions] = useState(false);
+  const [viewingVersion, setViewingVersion] = useState<{ _id: string; versionNumber: number; createdAt: string; generatedHtml: string } | null>(null);
+  const [liveGeneratedHtml, setLiveGeneratedHtml] = useState("");
 
   // Style customization state
   const [websiteStyle, setWebsiteStyle] = useState<StylePreset>('modern');
@@ -57,6 +87,10 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   const [splitPosition, setSplitPosition] = useState(50); // percentage
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Auto-save refs
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSaveRef = useRef<string>("");
+
   // Handle resize start
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -69,22 +103,22 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   // Handle resize move - optimized with requestAnimationFrame
   useEffect(() => {
     let animationFrameId: number | null = null;
-
+    
     const handleResize = (e: MouseEvent) => {
       if (!isDragging || !containerRef.current) return;
-
+      
       // Cancel any pending animation frame
       if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
       }
-
+      
       // Use requestAnimationFrame for smooth updates
       animationFrameId = requestAnimationFrame(() => {
         if (!containerRef.current) return;
         const container = containerRef.current;
         const rect = container.getBoundingClientRect();
         const newPosition = ((e.clientX - rect.left) / rect.width) * 100;
-
+        
         // Clamp between 20% and 80%
         setSplitPosition(Math.max(20, Math.min(80, newPosition)));
       });
@@ -122,7 +156,217 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
     editorInstance.store.listen(() => {
       setShowWelcome(false);
     }, { source: 'user', scope: 'document' });
+
+    // Set up auto-save listener
+    if (projectId) {
+      editorInstance.sideEffects.registerAfterChangeHandler('shape', () => {
+        // Debounced auto-save
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(() => {
+          saveCanvas(editorInstance);
+        }, 2000); // Save 2 seconds after last edit
+      });
+    }
+  }, [projectId]);
+
+  // Auto-save function
+  const saveCanvas = async (ed: Editor) => {
+    if (!projectId) return;
+
+    try {
+      // Get all records from the store
+      const allRecords = ed.store.allRecords();
+      const snapshotJson = JSON.stringify(allRecords);
+
+      // Don't save if nothing changed
+      if (snapshotJson === lastSaveRef.current) return;
+      lastSaveRef.current = snapshotJson;
+
+      await fetch(`/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          canvasData: { records: allRecords },
+          generatedHtml,
+        }),
+      });
+      console.log("✅ Auto-saved");
+    } catch (error) {
+      console.error("Auto-save failed:", error);
+    }
+  };
+
+  // Load project on mount
+  useEffect(() => {
+    if (projectId && editor) {
+      fetch(`/api/projects/${projectId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.project?.canvasData?.records) {
+            // Load the records into the store
+            // Sanitize records to avoid tldraw validation errors (undefined fields)
+            const records = data.project.canvasData.records.map((record: any) => {
+              const sanitized = {
+                ...record,
+                meta: record.meta ?? {},
+              };
+              // Handle instance record's stylesForNextShape
+              if (record.typeName === 'instance' && record.stylesForNextShape === undefined) {
+                sanitized.stylesForNextShape = {};
+              }
+              return sanitized;
+            });
+            editor.store.put(records);
+          }
+          if (data.project?.generatedHtml) {
+            setGeneratedHtml(data.project.generatedHtml);
+          }
+          if (data.project?.name) {
+            setCurrentProjectName(data.project.name);
+          }
+        })
+        .catch(err => console.error("Failed to load project:", err));
+    }
+  }, [projectId, editor]);
+
+  // Cleanup auto-save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
+      }
+    };
   }, []);
+
+  // Handle back button - show name modal if untitled
+  const handleBack = async () => {
+    // Save any pending changes
+    if (editor && projectId) {
+      await saveCanvas(editor);
+    }
+
+    // Show name prompt if untitled
+    if (currentProjectName.startsWith("Untitled document")) {
+      setShowNameModal(true);
+    } else {
+      onBack();
+    }
+  };
+
+  // Handle name save
+  const handleNameSave = async (newName: string) => {
+    if (projectId && newName !== currentProjectName) {
+      await fetch(`/api/projects/${projectId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      setCurrentProjectName(newName);
+    }
+    setShowNameModal(false);
+    onBack();
+  };
+
+  // Fetch version history
+  const fetchVersions = async () => {
+    if (!projectId) return;
+
+    setIsLoadingVersions(true);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/versions`);
+      const data = await res.json();
+      setVersions(data.versions || []);
+    } catch (error) {
+      console.error("Failed to fetch versions:", error);
+    } finally {
+      setIsLoadingVersions(false);
+    }
+  };
+
+  // Preview a version
+  const previewVersion = async (version: { _id: string; versionNumber: number; createdAt: string }) => {
+    if (!projectId || !version._id) return;
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/versions/${version._id}`);
+      const data = await res.json();
+
+      if (data.version) {
+        if (!viewingVersion) {
+          setLiveGeneratedHtml(generatedHtml);
+        }
+
+        setViewingVersion({
+          _id: version._id,
+          versionNumber: version.versionNumber,
+          createdAt: version.createdAt,
+          generatedHtml: data.version.generatedHtml || "",
+        });
+
+        setGeneratedHtml(data.version.generatedHtml || "");
+        setShowHistory(false);
+      }
+    } catch (error) {
+      console.error("Failed to preview version:", error);
+    }
+  };
+
+  // Confirm and restore version
+  const confirmRestore = async () => {
+    if (!viewingVersion || !projectId || !editor) return;
+
+    try {
+      const res = await fetch(`/api/projects/${projectId}/versions/${viewingVersion._id}`, {
+        method: "POST",
+      });
+      const data = await res.json();
+
+      if (data.project) {
+        if (data.project.canvasData?.records) {
+          const allShapeIds = editor.getCurrentPageShapeIds();
+          if (allShapeIds.size > 0) {
+            editor.deleteShapes(Array.from(allShapeIds));
+          }
+
+          const records = data.project.canvasData.records.map((record: any) => {
+            const sanitized = {
+              ...record,
+              meta: record.meta ?? {},
+            };
+            if (record.typeName === 'instance' && record.stylesForNextShape === undefined) {
+              sanitized.stylesForNextShape = {};
+            }
+            return sanitized;
+          });
+          editor.store.put(records);
+        }
+
+        if (data.project.generatedHtml) {
+          setGeneratedHtml(data.project.generatedHtml);
+        }
+
+        setViewingVersion(null);
+        setLiveGeneratedHtml(data.project.generatedHtml || "");
+        fetchVersions();
+      }
+    } catch (error) {
+      console.error("Failed to restore version:", error);
+    }
+  };
+
+  const exitVersionPreview = () => {
+    setGeneratedHtml(liveGeneratedHtml);
+    setViewingVersion(null);
+  };
+
+  // Load versions when panel opens
+  useEffect(() => {
+    if (showHistory && projectId) {
+      fetchVersions();
+    }
+  }, [showHistory, projectId]);
 
   // Update tldraw dark mode when isDarkMode changes
   useEffect(() => {
@@ -185,11 +429,11 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
       // Remove any external references that could cause tainted canvas
       // Replace xlink:href with href and remove any external URLs
       svgString = svgString.replace(/xlink:href/g, 'href');
-
+      
       // Create the image with proper settings to avoid tainted canvas
       const img = new Image();
       img.crossOrigin = 'anonymous';
-
+      
       // Use a data URL with properly encoded SVG
       const encodedSvg = encodeURIComponent(svgString)
         .replace(/'/g, '%27')
@@ -214,47 +458,80 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
 
             console.log("📸 Canvas exported! Sending to API...");
 
-            const response = await fetch("/api/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                image: base64Image,
-                style: websiteStyle,
-                backgroundColor,
-                accentColor,
-                currentHtml: isRegenerate ? generatedHtml : null, // Pass existing HTML for updates
-              }),
-            });
+            try {
+              // Send to API with style settings and existing HTML for regeneration
+              const response = await fetch("/api/generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  image: base64Image,
+                  style: websiteStyle,
+                  backgroundColor,
+                  accentColor,
+                  currentHtml: isRegenerate ? generatedHtml : null, // Pass existing HTML for updates
+                }),
+              });
 
-            const data = await response.json();
-            console.log(`📦 AI Response received: HTML(${data.html?.length || 0} chars), CSS(${data.css?.length || 0} chars)`);
+              const data = await response.json();
+              console.log(`📦 AI Response received: HTML(${data.html?.length || 0} chars), CSS(${data.css?.length || 0} chars)`);
 
-            if (data.error) {
-              console.error("API Error:", data.error);
-              alert("Error: " + data.error);
-            } else {
-              // Combine HTML, CSS, and JS into a single document
-              const fullHtml = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                  <style>${data.css || ""}</style>
-                </head>
-                <body>
-                  ${data.html || ""}
-                  <script>${data.js || ""}</script>
-                </body>
-                </html>
-              `;
-              setGeneratedHtml(fullHtml);
+              if (data.error) {
+                console.error("API Error:", data.error);
+                alert("Error: " + data.error);
+              } else {
+                // Log the AI's analysis
+                if (data.analysis) {
+                  setAnalysisData({
+                    annotations: data.analysis.annotations || [],
+                    layout: data.analysis.layout || "",
+                    elements: data.analysis.elements || []
+                  });
+                }
 
-              if (viewMode === 'canvas') setViewMode('split');
+                // Combine HTML, CSS, and JS into a single document
+                const fullHtml = `
+                  <!DOCTYPE html>
+                  <html>
+                  <head>
+                    <style>${data.css || ""}</style>
+                  </head>
+                  <body>
+                    ${data.html || ""}
+                    <script>${data.js || ""}</script>
+                  </body>
+                  </html>
+                `;
+                setGeneratedHtml(fullHtml);
+
+                // Save version
+                if (projectId) {
+                  const allRecords = editor?.store.allRecords() || [];
+                  await fetch(`/api/projects/${projectId}/versions`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      canvasData: { records: allRecords },
+                      generatedHtml: fullHtml,
+                    }),
+                  });
+                  if (showHistory) fetchVersions();
+                }
+
+                // Auto-switch to split view if in canvas-only mode
+                if (viewMode === 'canvas') {
+                  setViewMode('split');
+                }
+              }
+            } catch (err) {
+              console.error("API/Process error:", err);
+              alert("Failed to generate website.");
+            } finally {
+              setGenerating(false);
+              clearTimeout(timeoutId);
             }
-          }
+          };
         } catch (err) {
-          console.error("API/Process error:", err);
-          alert("Failed to generate website.");
-        } finally {
+          console.error("Canvas conversion error:", err);
           setGenerating(false);
           clearTimeout(timeoutId);
         }
@@ -280,7 +557,6 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
   const handleRegenerate = () => {
     handleGenerate(true);
   };
-
 
   const handleExport = () => {
     if (!generatedHtml) {
@@ -347,8 +623,11 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
       {/* Toolbar */}
       <div className={styles.toolbar}>
         <div className={styles.leftSection}>
-          <button onClick={onBack} className={styles.iconBtn} title="Back to dashboard">
+          <button onClick={handleBack} className={styles.iconBtn} title="Back to dashboard">
             <ArrowLeft size={20} />
+          </button>
+          <button className={styles.iconBtn} title="Menu">
+            <Menu size={20} />
           </button>
           <button
             className={`${styles.iconBtn} ${showSettings ? styles.activeIconBtn : ''}`}
@@ -391,6 +670,15 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
 
         <div className={styles.rightSection}>
           <div className={styles.actionTabs}>
+            <button
+              className={`${styles.secondaryBtn} ${showHistory ? styles.activeBtn : ''}`}
+              onClick={() => setShowHistory(!showHistory)}
+              title="Version History"
+            >
+              <History size={14} />
+              <span>History</span>
+            </button>
+
             <button
               className={styles.secondaryBtn}
               onClick={handleRegenerate}
@@ -482,6 +770,51 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
+      {/* Version History Panel */}
+      {showHistory && (
+        <div className={styles.settingsPanel}>
+          <div className={styles.settingsHeader}>
+            <span>Version History</span>
+            <button className={styles.iconBtn} onClick={() => setShowHistory(false)}>
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className={styles.settingsContent}>
+            {isLoadingVersions ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem' }}>
+                <Loader2 size={24} className={styles.spinning} />
+              </div>
+            ) : versions.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#94a3b8' }}>
+                <History size={32} style={{ marginBottom: '0.5rem', opacity: 0.5 }} />
+                <p style={{ margin: 0, fontSize: '0.875rem' }}>No versions yet</p>
+                <p style={{ margin: '0.25rem 0 0', fontSize: '0.75rem' }}>Click Generate to create a version</p>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {versions.map((version) => (
+                  <button
+                    key={version._id}
+                    className={styles.versionItem}
+                    onClick={() => previewVersion(version)}
+                    title="Click to preview this version"
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <Clock size={14} />
+                      <span style={{ fontWeight: 600 }}>Version {version.versionNumber}</span>
+                    </div>
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                      {new Date(version.createdAt).toLocaleString()}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Main Content Area */}
       <div className={styles.mainArea}>
         <div className={styles.splitContainer} ref={containerRef}>
@@ -491,9 +824,9 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
               className={`${styles.canvasSection} ${viewMode === 'canvas' ? styles.fullWidth : ''}`}
               style={viewMode === 'split' ? { width: `${splitPosition}%`, flex: 'none' } : undefined}
             >
-              <Tldraw
-                onMount={handleMount}
-                persistenceKey="sketchy-canvas"
+              <Tldraw 
+                onMount={handleMount} 
+                persistenceKey={projectId ? `webber-project-${projectId}` : "sketchy-canvas"}
               />
 
               {/* Welcome Overlay - disappears on first action */}
@@ -557,13 +890,43 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
 
           {/* Preview Section */}
           {viewMode !== 'canvas' && (
-            <div
+            <div 
               className={`${styles.previewSection} ${viewMode === 'preview' ? styles.fullWidth : ''}`}
               style={viewMode === 'split' ? { width: `${100 - splitPosition}%`, flex: 'none' } : undefined}
             >
-              <div className={styles.previewHeader}>
-                <span>Live Preview</span>
-              </div>
+              {viewingVersion ? (
+                <div className={styles.versionBanner}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <Clock size={16} />
+                    <span>
+                      <strong>Viewing Version {viewingVersion.versionNumber}</strong>
+                      <span style={{ marginLeft: '0.5rem', opacity: 0.7, fontSize: '0.8125rem' }}>
+                        {new Date(viewingVersion.createdAt).toLocaleString()}
+                      </span>
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button 
+                      onClick={exitVersionPreview}
+                      className={styles.secondaryBtn}
+                      style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                    >
+                      Back to Live
+                    </button>
+                    <button 
+                      onClick={confirmRestore}
+                      className={styles.generateBtn}
+                      style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                    >
+                      Restore this version
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className={styles.previewHeader}>
+                  <span>Live Preview</span>
+                </div>
+              )}
               <iframe
                 srcDoc={generatedHtml || `
                   <html>
@@ -602,21 +965,21 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
           <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
               <h3>Deploy to Vercel</h3>
-              <button
-                className={styles.iconBtn}
+              <button 
+                className={styles.iconBtn} 
                 onClick={() => !isDeploying && setShowDeployModal(false)}
                 disabled={isDeploying}
               >
                 <X size={18} />
               </button>
             </div>
-
+            
             <div className={styles.modalContent}>
               {!deployedUrl ? (
                 <>
                   <label className={styles.modalLabel}>Project Name</label>
-                  <input
-                    type="text"
+                  <input 
+                    type="text" 
                     value={deployName}
                     onChange={(e) => setDeployName(e.target.value)}
                     placeholder="my-awesome-website"
@@ -628,8 +991,8 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                   </p>
 
                   <label className={styles.checkboxLabel}>
-                    <input
-                      type="checkbox"
+                    <input 
+                      type="checkbox" 
                       checked={pushToGitHub}
                       onChange={(e) => setPushToGitHub(e.target.checked)}
                       disabled={isDeploying}
@@ -638,7 +1001,7 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                     <span>Also push to GitHub repository</span>
                   </label>
 
-                  <button
+                  <button 
                     className={styles.deployConfirmBtn}
                     onClick={handleDeployConfirm}
                     disabled={isDeploying || !deployName.trim()}
@@ -660,13 +1023,13 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                 <div className={styles.deploySuccess}>
                   <div className={styles.successIcon}>🎉</div>
                   <h4>Deployed Successfully!</h4>
-
+                  
                   {githubUrl && (
                     <>
                       <label className={styles.urlLabel}>GitHub Repository</label>
-                      <a
-                        href={githubUrl}
-                        target="_blank"
+                      <a 
+                        href={githubUrl} 
+                        target="_blank" 
                         rel="noopener noreferrer"
                         className={styles.deployUrl}
                       >
@@ -676,16 +1039,16 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
                   )}
 
                   <label className={styles.urlLabel}>Vercel Deployment</label>
-                  <a
-                    href={deployedUrl}
-                    target="_blank"
+                  <a 
+                    href={deployedUrl} 
+                    target="_blank" 
                     rel="noopener noreferrer"
                     className={styles.deployUrl}
                   >
                     {deployedUrl}
                   </a>
 
-                  <button
+                  <button 
                     className={styles.secondaryBtn}
                     onClick={() => {
                       setShowDeployModal(false);
@@ -703,6 +1066,14 @@ export default function CustomCanvas({ onBack }: { onBack: () => void }) {
           </div>
         </div>
       )}
+
+      {/* Name Prompt Modal */}
+      <NamePromptModal
+        isOpen={showNameModal}
+        currentName={currentProjectName}
+        onSave={handleNameSave}
+        onCancel={() => setShowNameModal(false)}
+      />
     </div>
   );
 }
