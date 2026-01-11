@@ -1,11 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Home, Info, LayoutGrid, HandHeart, HelpCircle, Users } from "lucide-react";
 import styles from "./page.module.css";
 import Dashboard from "@/components/ui/Dashboard";
 import CustomCanvas from "@/components/canvas/CustomCanvas";
 import AuthPage from "@/components/auth/AuthPage";
+import { getCurrentUser } from "@/lib/auth";
 
 // View states: AUTH (login/signup) -> LANDING -> DASHBOARD -> CANVAS
 type ViewState = "AUTH" | "LANDING" | "DASHBOARD" | "CANVAS";
@@ -13,6 +14,14 @@ type ViewState = "AUTH" | "LANDING" | "DASHBOARD" | "CANVAS";
 export default function HomePage() {
   // Start with AUTH view - user must login/signup first
   const [view, setView] = useState<ViewState>("AUTH");
+
+  // Check for existing session on page load
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (user) {
+      setView("LANDING"); // Skip auth if already logged in
+    }
+  }, []);
 
   // Auth page - login/signup
   if (view === "AUTH") {
@@ -33,14 +42,14 @@ export default function HomePage() {
   return (
     <main className="mesh-background">
       <div className={styles.landingContainer}>
-        
+
         <h1 className={styles.heroTitle}>
           Webber
         </h1>
 
         <p className={styles.subtitle}>The world is your canvas.</p>
 
-        <button 
+        <button
           className={styles.startBtn}
           onClick={() => setView("DASHBOARD")}
         >
@@ -72,7 +81,7 @@ export default function HomePage() {
             <Users size={20} />
           </div>
         </div>
-        
+
         <div style={{ position: 'absolute', bottom: '1rem', right: '2rem', fontSize: '0.8rem', opacity: 0.5 }}>
           MLH Code of Conduct
         </div>
