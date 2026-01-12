@@ -78,8 +78,8 @@ export async function GET(req: Request) {
             maxAge: 60 * 60 * 24 * 30,
         });
 
-        // Redirect to dashboard
-        return NextResponse.redirect(new URL("/", req.url));
+        // Redirect to dashboard - hardcoded to network IP
+        return NextResponse.redirect("http://172.18.77.173:3000/");
     } catch (error: any) {
         console.error("GitHub OAuth callback error:", error);
         return NextResponse.redirect(new URL("/?error=github_auth_error", req.url));

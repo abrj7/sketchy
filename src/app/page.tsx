@@ -20,15 +20,7 @@ export default function HomePage() {
   const [view, setView] = useState<ViewState>("AUTH");
   const [currentProject, setCurrentProject] = useState<CurrentProject | null>(null);
 
-  // Check for existing session on page load
-  useEffect(() => {
-    const user = getCurrentUser();
-    const githubUser = getGitHubUser();
-    
-    if (user || githubUser) {
-      setView("DASHBOARD"); // Skip auth if already logged in, go straight to dashboard as requested previously
-    }
-  }, []);
+  // Removed auto-navigation - users must explicitly click login button
 
   // Handle logout - return to auth page
   const handleLogout = () => {
