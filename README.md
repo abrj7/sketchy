@@ -1,2 +1,3 @@
-devpost: https://devpost.com/software/sketchy-8bnkyi
-website: https://www.sketchywebsite.tech/
+🔗 **Project Links**  
+- Devpost: https://devpost.com/software/sketchy-8bnkyi  
+- Live Website: https://www.sketchywebsite.tec
