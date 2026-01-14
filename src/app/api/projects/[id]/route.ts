@@ -42,12 +42,12 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 }
 
-// PUT - Update project (name, canvasData, generatedHtml)
+// PUT - Update project (name, canvasData, generatedHtml, thumbnail)
 export async function PUT(request: NextRequest, context: RouteContext) {
     try {
         const { id } = await context.params;
         const body = await request.json();
-        const { name, canvasData, generatedHtml } = body;
+        const { name, canvasData, generatedHtml, thumbnail } = body;
 
         await connectToDatabase();
 
@@ -55,6 +55,7 @@ export async function PUT(request: NextRequest, context: RouteContext) {
         if (name !== undefined) updateData.name = name;
         if (canvasData !== undefined) updateData.canvasData = canvasData;
         if (generatedHtml !== undefined) updateData.generatedHtml = generatedHtml;
+        if (thumbnail !== undefined) updateData.thumbnail = thumbnail;
 
         const project = await Project.findByIdAndUpdate(
             id,

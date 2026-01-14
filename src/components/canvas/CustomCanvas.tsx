@@ -2,19 +2,19 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import styles from "./CustomCanvas.module.css";
-import { 
-  Menu, 
-  ArrowLeft, 
-  Send, 
-  RotateCcw, 
-  Download, 
-  Loader2, 
-  Settings, 
-  X, 
-  Sun, 
-  Moon, 
-  Rocket, 
-  History, 
+import {
+  Menu,
+  ArrowLeft,
+  Send,
+  RotateCcw,
+  Download,
+  Loader2,
+  Settings,
+  X,
+  Sun,
+  Moon,
+  Rocket,
+  History,
   Clock,
   Layout,
   Columns,
@@ -62,6 +62,7 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
   const [isLoadingVersions, setIsLoadingVersions] = useState(false);
   const [viewingVersion, setViewingVersion] = useState<{ _id: string; versionNumber: number; createdAt: string; generatedHtml: string } | null>(null);
   const [liveGeneratedHtml, setLiveGeneratedHtml] = useState("");
+  const [liveCanvasData, setLiveCanvasData] = useState<unknown[] | null>(null);
   const [isInitialLoadComplete, setIsInitialLoadComplete] = useState(false);
 
   // Style customization state
@@ -176,7 +177,7 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
     }
   }, [projectId]);
 
-  // Auto-save function
+  // Auto-save function with thumbnail capture
   const saveCanvas = async (ed: Editor) => {
     if (!projectId || !isInitialLoadComplete) return;
 
@@ -189,14 +190,61 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
       if (snapshotJson === lastSaveRef.current) return;
       lastSaveRef.current = snapshotJson;
 
+      // Generate thumbnail from canvas
+      let thumbnail = "";
+      const shapeIds = ed.getCurrentPageShapeIds();
+      if (shapeIds.size > 0) {
+        try {
+          const svgResult = await ed.getSvgElement(Array.from(shapeIds), {
+            background: true,
+            padding: 10,
+          });
+          if (svgResult?.svg) {
+            const serializer = new XMLSerializer();
+            let svgString = serializer.serializeToString(svgResult.svg);
+            svgString = svgString.replace(/xlink:href/g, 'href');
+
+            // Create small thumbnail (max 400px)
+            const scale = Math.min(400 / svgResult.width, 400 / svgResult.height, 1);
+            const thumbWidth = Math.round(svgResult.width * scale);
+            const thumbHeight = Math.round(svgResult.height * scale);
+
+            const img = new Image();
+            const encodedSvg = encodeURIComponent(svgString).replace(/'/g, '%27').replace(/"/g, '%22');
+
+            thumbnail = await new Promise<string>((resolve) => {
+              img.onload = () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = thumbWidth;
+                canvas.height = thumbHeight;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                  ctx.fillStyle = 'white';
+                  ctx.fillRect(0, 0, canvas.width, canvas.height);
+                  ctx.drawImage(img, 0, 0, thumbWidth, thumbHeight);
+                  resolve(canvas.toDataURL('image/png', 0.7));
+                } else {
+                  resolve("");
+                }
+              };
+              img.onerror = () => resolve("");
+              img.src = `data:image/svg+xml,${encodedSvg}`;
+            });
+          }
+        } catch (err) {
+          console.warn("Thumbnail generation failed:", err);
+        }
+      }
+
       await fetch(`/api/projects/${projectId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           canvasData: { records: allRecords },
+          ...(thumbnail && { thumbnail }),
         }),
       });
-      console.log("✅ Auto-saved canvas data");
+      console.log("✅ Auto-saved canvas data" + (thumbnail ? " with thumbnail" : ""));
     } catch (error) {
       console.error("Auto-save failed:", error);
     }
@@ -209,6 +257,8 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
         .then(res => res.json())
         .then(data => {
           if (data.project?.canvasData?.records && data.project.canvasData.records.length > 0) {
+            // Hide welcome overlay since project has saved data
+            setShowWelcome(false);
             // Load the records into the store
             // Sanitize records to avoid tldraw validation errors (undefined fields)
             const records = data.project.canvasData.records.map((record: any) => {
@@ -295,15 +345,19 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
 
   // Preview a version
   const previewVersion = async (version: { _id: string; versionNumber: number; createdAt: string }) => {
-    if (!projectId || !version._id) return;
+    if (!projectId || !version._id || !editor) return;
 
     try {
       const res = await fetch(`/api/projects/${projectId}/versions/${version._id}`);
       const data = await res.json();
 
       if (data.version) {
+        // Store current live state if this is the first version view
         if (!viewingVersion) {
           setLiveGeneratedHtml(generatedHtml);
+          // Also save current canvas state
+          const currentRecords = editor.store.allRecords();
+          setLiveCanvasData(currentRecords);
         }
 
         setViewingVersion({
@@ -313,7 +367,32 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
           generatedHtml: data.version.generatedHtml || "",
         });
 
+        // Set the version's HTML for preview
         setGeneratedHtml(data.version.generatedHtml || "");
+
+        // Load the version's canvas data if available
+        if (data.version.canvasData?.records && data.version.canvasData.records.length > 0) {
+          // Clear current canvas
+          const allShapeIds = editor.getCurrentPageShapeIds();
+          if (allShapeIds.size > 0) {
+            editor.deleteShapes(Array.from(allShapeIds));
+          }
+          // Load version's canvas
+          const records = data.version.canvasData.records.map((record: any) => {
+            const sanitized = {
+              ...record,
+              meta: record.meta ?? {},
+            };
+            if (record.typeName === 'instance' && record.stylesForNextShape === undefined) {
+              sanitized.stylesForNextShape = {};
+            }
+            return sanitized;
+          });
+          editor.store.put(records);
+        }
+
+        // Auto-switch to split view so user can see the preview
+        setViewMode('split');
         setShowHistory(false);
       }
     } catch (error) {
@@ -364,9 +443,35 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
     }
   };
 
-  const exitVersionPreview = () => {
+  const exitVersionPreview = async () => {
+    if (!editor) return;
+
+    // Restore live HTML
     setGeneratedHtml(liveGeneratedHtml);
+
+    // Restore live canvas data if we have it
+    if (liveCanvasData && liveCanvasData.length > 0) {
+      // Clear current canvas
+      const allShapeIds = editor.getCurrentPageShapeIds();
+      if (allShapeIds.size > 0) {
+        editor.deleteShapes(Array.from(allShapeIds));
+      }
+      // Restore live canvas
+      const records = liveCanvasData.map((record: any) => {
+        const sanitized = {
+          ...record,
+          meta: record.meta ?? {},
+        };
+        if (record.typeName === 'instance' && record.stylesForNextShape === undefined) {
+          sanitized.stylesForNextShape = {};
+        }
+        return sanitized;
+      });
+      editor.store.put(records);
+    }
+
     setViewingVersion(null);
+    setLiveCanvasData(null);
   };
 
   // Load versions when panel opens
@@ -866,53 +971,53 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
               persistenceKey={projectId ? `webber-project-${projectId}` : undefined}
             />
 
-              {/* Welcome Overlay - disappears on first action */}
-              {showWelcome && (
-                <div className={styles.welcomeOverlay} onClick={() => setShowWelcome(false)}>
-                  {/* Arrow pointing to menu/settings */}
-                  <div className={styles.hintTopLeft}>
-                    <svg className={styles.arrowCurved} width="60" height="50" viewBox="0 0 60 50">
-                      <path d="M50 45 Q30 45 20 25 Q15 15 5 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M5 10 L10 15 M5 10 L12 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                    <span className={styles.hintText}>Export, preferences, languages, ...</span>
-                  </div>
-
-                  {/* Arrow pointing down to toolbar */}
-                  <div className={styles.hintTopCenter}>
-                    <span className={styles.hintTextMove}>To move canvas, use the <kbd>hand tool</kbd>  !</span>
-                    <svg className={styles.arrowUp} width="40" height="60" viewBox="0 0 40 60">
-                      <path d="M20 0 L20 50" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M20 0 L15 8 M20 0 L25 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </div>
-
-                  {/* Pick a tool hint pointing down */}
-                  <div className={styles.hintToolPicker}>
-                    <svg className={styles.arrowDown} width="40" height="60" viewBox="0 0 40 60">
-                      <path d="M20 60 L20 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M20 60 L15 52 M20 60 L25 52" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                    <span className={styles.hintText}>Pick a tool <br />& Start drawing :)</span>
-                  </div>
-
-                  {/* Center branding */}
-                  <div className={styles.welcomeCenter}>
-                    <h1 className={styles.welcomeLogo}>SKETCHY</h1>
-                    <p className={styles.welcomeSubtext}>Draw it. Build it. Ship it.</p>
-                  </div>
-
-                  {/* Squiggly arrow pointing to AI sidebar */}
-                  <div className={styles.hintSidebar}>
-                    <span className={styles.hintTextSidebar}>Make your ideas<br /><strong>BETTER</strong> with Gemini ;)</span>
-                    <svg className={styles.arrowSquiggly} width="190" height="40" viewBox="0 0 190 40">
-                      <path d="M0 20 Q15 8 30 20 Q45 32 60 20 Q75 8 90 20 Q105 32 120 20 Q135 8 150 20 Q165 32 175 20 L185 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <path d="M185 20 L178 14 M185 20 L178 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                    </svg>
-                  </div>
+            {/* Welcome Overlay - disappears on first action */}
+            {showWelcome && (
+              <div className={styles.welcomeOverlay} onClick={() => setShowWelcome(false)}>
+                {/* Arrow pointing to menu/settings */}
+                <div className={styles.hintTopLeft}>
+                  <svg className={styles.arrowCurved} width="60" height="50" viewBox="0 0 60 50">
+                    <path d="M50 45 Q30 45 20 25 Q15 15 5 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M5 10 L10 15 M5 10 L12 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  <span className={styles.hintText}>Export, preferences, languages, ...</span>
                 </div>
-              )}
-            </div>
+
+                {/* Arrow pointing down to toolbar */}
+                <div className={styles.hintTopCenter}>
+                  <span className={styles.hintTextMove}>To move canvas, use the <kbd>hand tool</kbd>  !</span>
+                  <svg className={styles.arrowUp} width="40" height="60" viewBox="0 0 40 60">
+                    <path d="M20 0 L20 50" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M20 0 L15 8 M20 0 L25 8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </div>
+
+                {/* Pick a tool hint pointing down */}
+                <div className={styles.hintToolPicker}>
+                  <svg className={styles.arrowDown} width="40" height="60" viewBox="0 0 40 60">
+                    <path d="M20 60 L20 10" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M20 60 L15 52 M20 60 L25 52" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                  <span className={styles.hintText}>Pick a tool <br />& Start drawing :)</span>
+                </div>
+
+                {/* Center branding */}
+                <div className={styles.welcomeCenter}>
+                  <h1 className={styles.welcomeLogo}>SKETCHY</h1>
+                  <p className={styles.welcomeSubtext}>Draw it. Build it. Ship it.</p>
+                </div>
+
+                {/* Squiggly arrow pointing to AI sidebar */}
+                <div className={styles.hintSidebar}>
+                  <span className={styles.hintTextSidebar}>Make your ideas<br /><strong>BETTER</strong> with Gemini ;)</span>
+                  <svg className={styles.arrowSquiggly} width="190" height="40" viewBox="0 0 190 40">
+                    <path d="M0 20 Q15 8 30 20 Q45 32 60 20 Q75 8 90 20 Q105 32 120 20 Q135 8 150 20 Q165 32 175 20 L185 20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path d="M185 20 L178 14 M185 20 L178 26" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Resize Handle - only shown in split view */}
           {viewMode === 'split' && (
@@ -929,41 +1034,41 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
             className={`${styles.previewSection} ${viewMode === 'preview' ? styles.fullWidth : ''} ${viewMode === 'canvas' ? styles.hidden : ''}`}
             style={viewMode === 'split' ? { width: `${100 - splitPosition}%`, flex: 'none' } : undefined}
           >
-              {viewingVersion ? (
-                <div className={styles.versionBanner}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <Clock size={16} />
-                    <span>
-                      <strong>Viewing Version {viewingVersion.versionNumber}</strong>
-                      <span style={{ marginLeft: '0.5rem', opacity: 0.7, fontSize: '0.8125rem' }}>
-                        {new Date(viewingVersion.createdAt).toLocaleString()}
-                      </span>
+            {viewingVersion ? (
+              <div className={styles.versionBanner}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <Clock size={16} />
+                  <span>
+                    <strong>Viewing Version {viewingVersion.versionNumber}</strong>
+                    <span style={{ marginLeft: '0.5rem', opacity: 0.7, fontSize: '0.8125rem' }}>
+                      {new Date(viewingVersion.createdAt).toLocaleString()}
                     </span>
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button
-                      onClick={exitVersionPreview}
-                      className={styles.secondaryBtn}
-                      style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
-                    >
-                      Back to Live
-                    </button>
-                    <button
-                      onClick={confirmRestore}
-                      className={styles.generateBtn}
-                      style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
-                    >
-                      Restore this version
-                    </button>
-                  </div>
+                  </span>
                 </div>
-              ) : (
-                <div className={styles.previewHeader}>
-                  <span>Live Preview</span>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={exitVersionPreview}
+                    className={styles.secondaryBtn}
+                    style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                  >
+                    Back to Live
+                  </button>
+                  <button
+                    onClick={confirmRestore}
+                    className={styles.generateBtn}
+                    style={{ padding: '0.375rem 0.75rem', fontSize: '0.8125rem' }}
+                  >
+                    Restore this version
+                  </button>
                 </div>
-              )}
-              <iframe
-                srcDoc={generatedHtml || `
+              </div>
+            ) : (
+              <div className={styles.previewHeader}>
+                <span>Live Preview</span>
+              </div>
+            )}
+            <iframe
+              srcDoc={generatedHtml || `
                   <html>
                   <body style="margin:0;padding:2rem;font-family:system-ui;color:#9ca3af;display:flex;align-items:center;justify-content:center;height:100vh;background:#f8fafc;text-align:center;">
                     <div>
@@ -973,10 +1078,10 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
                   </body>
                   </html>
                 `}
-                className={styles.previewIframe}
-                title="Live Preview"
-              />
-            </div>
+              className={styles.previewIframe}
+              title="Live Preview"
+            />
+          </div>
         </div>
 
         {/* Chat Panel */}
@@ -1070,9 +1175,9 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
                   {githubUrl && (
                     <>
                       <label className={styles.urlLabel}>GitHub Repository</label>
-                      <a 
-                        href={githubUrl || undefined} 
-                        target="_blank" 
+                      <a
+                        href={githubUrl || undefined}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className={styles.deployUrl}
                       >
@@ -1082,9 +1187,9 @@ export default function CustomCanvas({ onBack, projectId, projectName = "Untitle
                   )}
 
                   <label className={styles.urlLabel}>Vercel Deployment</label>
-                  <a 
-                    href={deployedUrl || undefined} 
-                    target="_blank" 
+                  <a
+                    href={deployedUrl || undefined}
+                    target="_blank"
                     rel="noopener noreferrer"
                     className={styles.deployUrl}
                   >

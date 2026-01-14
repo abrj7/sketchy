@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
 
         const projects = await Project.find({ userId })
             .sort({ updatedAt: -1 })
-            .select("_id name updatedAt createdAt")
+            .select("_id name updatedAt createdAt generatedHtml canvasData thumbnail")
             .limit(20);
 
         return NextResponse.json({ projects });

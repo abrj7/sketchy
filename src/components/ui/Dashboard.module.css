@@ -548,3 +548,73 @@
 .star-button.starred:hover {
   background: rgba(250, 204, 21, 0.2);
 }
+
+/* Preview Iframe */
+.preview-iframe {
+  width: 100%;
+  flex: 1;
+  border: none;
+  border-radius: 12px;
+  background: white;
+  pointer-events: none;
+}
+
+/* Canvas Preview Indicator */
+.canvas-preview {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 0.75rem;
+  color: #94a3b8;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Empty Project Preview */
+.empty-preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  color: #cbd5e1;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Footer Right Container */
+.footer-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Delete Button */
+.delete-button {
+  background: transparent;
+  border: none;
+  padding: 8px;
+  border-radius: 50%;
+  cursor: pointer;
+  color: #94a3b8;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.delete-button:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  transform: scale(1.1);
+}
+
+/* Thumbnail Image */
+.thumbnail-image {
+  width: 100%;
+  flex: 1;
+  object-fit: contain;
+  border-radius: 12px;
+  background: white;
+}

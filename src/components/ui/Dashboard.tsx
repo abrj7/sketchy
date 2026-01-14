@@ -13,7 +13,9 @@ import {
   LayoutGrid,
   ArrowLeft,
   SlidersHorizontal,
-  Loader2
+  Loader2,
+  Trash2,
+  Pencil
 } from "lucide-react";
 import styles from "./Dashboard.module.css";
 import UserProfile from "./UserProfile";
@@ -25,6 +27,9 @@ interface Project {
   name: string;
   updatedAt: string;
   createdAt: string;
+  generatedHtml?: string;
+  canvasData?: { records?: unknown[] } | null;
+  thumbnail?: string;
 }
 
 interface DashboardProps {
@@ -155,7 +160,7 @@ export default function Dashboard({ onCreateNew, onHome, onLogout, onOpenProject
       if (data.project) {
         // Open the new project
         if (onOpenProject) {
-          onOpenProject(data.project._id, data.project.name);
+          onOpenProject(data.project.id, data.project.name);
         } else {
           onCreateNew();
         }
@@ -176,6 +181,33 @@ export default function Dashboard({ onCreateNew, onHome, onLogout, onOpenProject
 
     if (onOpenProject) {
       onOpenProject(project._id, project.name);
+    }
+  };
+
+  const handleDeleteProject = async (e: React.MouseEvent, projectId: string) => {
+    e.stopPropagation(); // Prevent card click
+    if (!confirm('Are you sure you want to delete this project? This cannot be undone.')) {
+      return;
+    }
+    try {
+      await fetch(`/api/projects/${projectId}`, { method: 'DELETE' });
+      setProjects(prev => prev.filter(p => p._id !== projectId));
+      // Remove from starred and recent
+      setStarredProjects(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(projectId);
+        localStorage.setItem('starredProjects', JSON.stringify(Array.from(newSet)));
+        return newSet;
+      });
+      setRecentlyOpened(prev => {
+        const newRecent = { ...prev };
+        delete newRecent[projectId];
+        localStorage.setItem('recentlyOpened', JSON.stringify(newRecent));
+        return newRecent;
+      });
+    } catch (error) {
+      console.error('Failed to delete project:', error);
+      alert('Failed to delete project. Please try again.');
     }
   };
 
@@ -377,28 +409,56 @@ export default function Dashboard({ onCreateNew, onHome, onLogout, onOpenProject
                         <div className={styles['mockup-dot']}></div>
                         <div className={styles['mockup-dot']}></div>
                       </div>
-                      <div className={styles['mockup-header']}></div>
-                      <div className={styles['mockup-grid']}>
-                        <div className={styles['mockup-item']}></div>
-                        <div className={styles['mockup-item']}></div>
-                      </div>
+                      {project.generatedHtml ? (
+                        <iframe
+                          srcDoc={project.generatedHtml}
+                          className={styles['preview-iframe']}
+                          title={`Preview of ${project.name}`}
+                        />
+                      ) : project.thumbnail ? (
+                        <img
+                          src={project.thumbnail}
+                          alt={`Canvas preview of ${project.name}`}
+                          className={styles['thumbnail-image']}
+                        />
+                      ) : project.canvasData?.records && project.canvasData.records.length > 0 ? (
+                        <div className={styles['canvas-preview']}>
+                          <Pencil size={32} color="#94a3b8" />
+                          <span>Canvas saved</span>
+                        </div>
+                      ) : (
+                        <div className={styles['empty-preview']}>
+                          <span>Empty project</span>
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className={styles['card-content']}>
                     <h3 className={styles['project-title']}>{project.name}</h3>
-                    <p className={styles['project-summary']}>Canvas project</p>
+                    <p className={styles['project-summary']}>
+                      {project.generatedHtml ? 'Website generated' : project.canvasData?.records?.length ? 'Canvas in progress' : 'New project'}
+                    </p>
                     <div className={styles['card-footer']}>
                       <div className={styles['footer-left']}>
                         <div className={styles['dot-indicator']}></div>
                         <span className={styles['date-label']}>{formatRelativeTime(project.updatedAt)}</span>
                       </div>
-                      <button
-                        className={`${styles['star-button']} ${starredProjects.has(project._id) ? styles['starred'] : ''}`}
-                        onClick={(e) => toggleStar(e, project._id)}
-                        title={starredProjects.has(project._id) ? 'Unstar project' : 'Star project'}
-                      >
-                        <Star size={18} strokeWidth={2} fill={starredProjects.has(project._id) ? '#facc15' : 'none'} />
-                      </button>
+                      <div className={styles['footer-right']}>
+                        <button
+                          className={styles['delete-button']}
+                          onClick={(e) => handleDeleteProject(e, project._id)}
+                          title="Delete project"
+                        >
+                          <Trash2 size={18} strokeWidth={2} />
+                        </button>
+                        <button
+                          className={`${styles['star-button']} ${starredProjects.has(project._id) ? styles['starred'] : ''}`}
+                          onClick={(e) => toggleStar(e, project._id)}
+                          title={starredProjects.has(project._id) ? 'Unstar project' : 'Star project'}
+                        >
+                          <Star size={18} strokeWidth={2} fill={starredProjects.has(project._id) ? '#facc15' : 'none'} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -413,6 +473,6 @@ export default function Dashboard({ onCreateNew, onHome, onLogout, onOpenProject
         isOpen={isSupportModalOpen}
         onClose={() => setIsSupportModalOpen(false)}
       />
-    </div>
+    </div >
   );
 }

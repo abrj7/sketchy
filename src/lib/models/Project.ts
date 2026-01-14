@@ -6,6 +6,7 @@ export interface IProject {
     name: string;
     canvasData: Record<string, unknown> | null; // tldraw JSON snapshot
     generatedHtml: string;
+    thumbnail: string; // base64 canvas preview image
     createdAt: Date;
     updatedAt: Date;
 }
@@ -33,6 +34,10 @@ const ProjectSchema = new Schema<IProjectDocument>(
             default: null,
         },
         generatedHtml: {
+            type: String,
+            default: "",
+        },
+        thumbnail: {
             type: String,
             default: "",
         },
