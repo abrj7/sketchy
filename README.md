@@ -5,7 +5,7 @@ Sketchy is an ai-powered web application that converts hand-drawn wireframes int
 ## Project Links
 
 - [Devpost](https://devpost.com/software/sketchy-8bnkyi)
-- [Live Website](https://www.sketchywebsite.tec)
+- [Live Website](https://www.sketchywebsite.tech)
 
 # Demo images
 <div style="display: flex; flex-wrap: wrap; gap: 10px;">
