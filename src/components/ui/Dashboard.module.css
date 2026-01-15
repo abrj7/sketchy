@@ -788,3 +788,150 @@
   font-size: 0.8125rem;
   color: #94a3b8;
 }
+
+/* NEW: View All List View */
+.view-all-count {
+  font-size: 0.875rem;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-left: auto;
+  margin-right: 1rem;
+}
+
+.view-all-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 2rem 1rem;
+  overflow-y: auto;
+  max-height: 60vh;
+}
+
+.view-all-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.view-all-row:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+}
+
+.view-all-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.view-all-row-name {
+  font-family: 'Outfit', sans-serif;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--ws-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-all-row-status {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+.view-all-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.view-all-row-time {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  white-space: nowrap;
+}
+
+.view-all-row-star {
+  background: none;
+  border: none;
+  padding: 0.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.view-all-row-star:hover {
+  background: #fef9c3;
+  color: #facc15;
+}
+
+.view-all-row-star.starred {
+  color: #facc15;
+}
+
+.view-all-row-delete {
+  background: none;
+  border: none;
+  padding: 0.4rem;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #94a3b8;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.view-all-row-delete:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+/* Pagination */
+.view-all-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 2rem 1.5rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.pagination-btn {
+  background: #f1f5f9;
+  border: none;
+  padding: 0.5rem;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #64748b;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  color: var(--ws-ink);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.875rem;
+  color: #64748b;
+  font-weight: 500;
+}

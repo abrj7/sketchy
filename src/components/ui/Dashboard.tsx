@@ -16,7 +16,9 @@ import {
   Loader2,
   Trash2,
   Pencil,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import styles from "./Dashboard.module.css";
 import UserProfile from "./UserProfile";
@@ -80,6 +82,8 @@ export default function Dashboard({ onCreateNew, onHome, onLogout, onOpenProject
   const [recentlyOpened, setRecentlyOpened] = useState<Record<string, number>>({});
   const [activeFilter, setActiveFilter] = useState<'all' | 'starred' | 'recent'>('all');
   const [showViewAllModal, setShowViewAllModal] = useState(false);
+  const [viewAllPage, setViewAllPage] = useState(1);
+  const ITEMS_PER_PAGE = 12;
 
   // Get dynamic title based on active filter
   const getSectionTitle = () => {
@@ -493,59 +497,92 @@ export default function Dashboard({ onCreateNew, onHome, onLogout, onOpenProject
         onClose={() => setIsSupportModalOpen(false)}
       />
 
-      {/* View All Projects Modal */}
-      {showViewAllModal && (
-        <div className={styles['view-all-overlay']} onClick={() => setShowViewAllModal(false)}>
-          <div className={styles['view-all-modal']} onClick={(e) => e.stopPropagation()}>
-            <div className={styles['view-all-header']}>
-              <h2 className={styles['view-all-title']}>{getSectionTitle()}</h2>
-              <button className={styles['view-all-close']} onClick={() => setShowViewAllModal(false)}>
-                <X size={24} />
-              </button>
-            </div>
-            <div className={styles['view-all-grid']}>
-              {filteredProjects.map((project, index) => (
-                <div
-                  key={project._id}
-                  className={styles['view-all-card']}
-                  onClick={() => {
-                    setShowViewAllModal(false);
-                    handleOpenProject(project);
-                  }}
-                >
-                  <div className={styles['view-all-stage']} style={{ backgroundColor: PROJECT_COLORS[index % PROJECT_COLORS.length] }}>
-                    <div className={styles['view-all-window']}>
-                      <div className={styles['view-all-controls']}>
-                        <div className={styles['view-all-dot']}></div>
-                        <div className={styles['view-all-dot']}></div>
-                        <div className={styles['view-all-dot']}></div>
-                      </div>
-                      {project.generatedHtml ? (
-                        <iframe
-                          srcDoc={project.generatedHtml}
-                          className={styles['view-all-iframe']}
-                          title={`Preview of ${project.name}`}
-                          sandbox="allow-scripts allow-same-origin"
-                        />
-                      ) : project.thumbnail ? (
-                        <img src={project.thumbnail} alt={project.name} className={styles['view-all-thumbnail']} />
-                      ) : (
-                        <div className={styles['view-all-empty']}>
-                          <Pencil size={24} color="#94a3b8" />
-                        </div>
-                      )}
+      {/* View All Projects Modal - List View with Pagination */}
+      {showViewAllModal && (() => {
+        // Sort projects by most recent first
+        const sortedProjects = [...filteredProjects].sort(
+          (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+        );
+        const totalPages = Math.ceil(sortedProjects.length / ITEMS_PER_PAGE);
+        const startIndex = (viewAllPage - 1) * ITEMS_PER_PAGE;
+        const paginatedProjects = sortedProjects.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+        return (
+          <div className={styles['view-all-overlay']} onClick={() => { setShowViewAllModal(false); setViewAllPage(1); }}>
+            <div className={styles['view-all-modal']} onClick={(e) => e.stopPropagation()}>
+              <div className={styles['view-all-header']}>
+                <h2 className={styles['view-all-title']}>{getSectionTitle()}</h2>
+                <span className={styles['view-all-count']}>{sortedProjects.length} projects</span>
+                <button className={styles['view-all-close']} onClick={() => { setShowViewAllModal(false); setViewAllPage(1); }}>
+                  <X size={24} />
+                </button>
+              </div>
+
+              {/* List View */}
+              <div className={styles['view-all-list']}>
+                {paginatedProjects.map((project) => (
+                  <div
+                    key={project._id}
+                    className={styles['view-all-row']}
+                    onClick={() => {
+                      setShowViewAllModal(false);
+                      setViewAllPage(1);
+                      handleOpenProject(project);
+                    }}
+                  >
+                    <div className={styles['view-all-row-main']}>
+                      <span className={styles['view-all-row-name']}>{project.name}</span>
+                      <span className={styles['view-all-row-status']}>
+                        {project.generatedHtml ? 'Website generated' : project.canvasData?.records?.length ? 'Canvas in progress' : 'New project'}
+                      </span>
+                    </div>
+                    <div className={styles['view-all-row-meta']}>
+                      <span className={styles['view-all-row-time']}>{formatRelativeTime(project.updatedAt)}</span>
+                      <button
+                        className={`${styles['view-all-row-star']} ${starredProjects.has(project._id) ? styles.starred : ''}`}
+                        onClick={(e) => toggleStar(e, project._id)}
+                        title={starredProjects.has(project._id) ? 'Unstar' : 'Star'}
+                      >
+                        <Star size={16} fill={starredProjects.has(project._id) ? '#facc15' : 'none'} />
+                      </button>
+                      <button
+                        className={styles['view-all-row-delete']}
+                        onClick={(e) => handleDeleteProject(e, project._id)}
+                        title="Delete project"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </div>
                   </div>
-                  <div className={styles['view-all-info']}>
-                    <span className={styles['view-all-name']}>{project.name}</span>
-                    <span className={styles['view-all-date']}>{formatRelativeTime(project.updatedAt)}</span>
-                  </div>
+                ))}
+              </div>
+
+              {/* Pagination */}
+              {totalPages > 1 && (
+                <div className={styles['view-all-pagination']}>
+                  <button
+                    className={styles['pagination-btn']}
+                    onClick={() => setViewAllPage(p => Math.max(1, p - 1))}
+                    disabled={viewAllPage === 1}
+                  >
+                    <ChevronLeft size={18} />
+                  </button>
+                  <span className={styles['pagination-info']}>
+                    Page {viewAllPage} of {totalPages}
+                  </span>
+                  <button
+                    className={styles['pagination-btn']}
+                    onClick={() => setViewAllPage(p => Math.min(totalPages, p + 1))}
+                    disabled={viewAllPage === totalPages}
+                  >
+                    <ChevronRight size={18} />
+                  </button>
                 </div>
-              ))}
+              )}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
