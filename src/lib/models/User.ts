@@ -5,8 +5,12 @@ export interface IUser {
     name: string;
     email: string;
     password: string;
+    avatar?: string;
     createdAt: Date;
     updatedAt: Date;
+    isEmailVerified?: boolean;
+    verificationToken?: string;
+    verificationTokenExpiry?: Date;
 }
 
 // Document interface (includes Mongoose methods)
@@ -40,6 +44,21 @@ const UserSchema = new Schema<IUserDocument>(
             required: [true, "Password is required"],
             minlength: [8, "Password must be at least 8 characters"],
             select: false, // Never return password in queries by default
+        },
+        avatar: {
+            type: String,
+        },
+        isEmailVerified: {
+            type: Boolean,
+            default: false,
+        },
+        verificationToken: {
+            type: String,
+            select: false,
+        },
+        verificationTokenExpiry: {
+            type: Date,
+            select: false,
         },
     },
     {

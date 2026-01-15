@@ -20,6 +20,7 @@
     "next": "latest",
     "react": "latest",
     "react-dom": "latest",
+    "resend": "^6.7.0",
     "tldraw": "^4.2.3",
     "zustand": "^4.5.2"
   },

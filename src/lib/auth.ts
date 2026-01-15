@@ -15,6 +15,8 @@ export interface User {
 export interface AuthResponse {
   user: User | null;
   error?: string;
+  needsVerification?: boolean;
+  email?: string;
 }
 
 const STORAGE_KEY = "webber_user";
@@ -60,6 +62,15 @@ export async function signIn(email: string, password: string): Promise<AuthRespo
     const data = await response.json();
 
     if (!response.ok) {
+      // Pass through verification info if present
+      if (response.status === 403 && data.needsVerification) {
+        return {
+          user: null,
+          error: data.error,
+          needsVerification: true,
+          email: data.email
+        };
+      }
       return { user: null, error: data.error || "Login failed" };
     }
 
@@ -88,6 +99,15 @@ export async function signUp(name: string, email: string, password: string): Pro
 
     if (!response.ok) {
       return { user: null, error: data.error || "Signup failed" };
+    }
+
+    // Check for verification requirement
+    if (data.needsVerification) {
+      return {
+        user: null,
+        needsVerification: true,
+        email: data.email
+      };
     }
 
     currentUser = data.user;

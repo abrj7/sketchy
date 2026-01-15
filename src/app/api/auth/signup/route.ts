@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import connectToDatabase from "@/lib/mongodb";
 import User from "@/lib/models/User";
+import { sendVerificationEmail } from "@/lib/email";
 
 // Password validation: min 8 chars, 1 uppercase, 1 lowercase, 1 special char
 function validatePassword(password: string): { valid: boolean; error?: string } {
@@ -66,22 +68,29 @@ export async function POST(request: NextRequest) {
         // Hash password with salt rounds of 12 (secure but not too slow)
         const hashedPassword = await bcrypt.hash(password, 12);
 
-        // Create new user
+        // Generate verification token
+        const verificationToken = crypto.randomBytes(32).toString("hex");
+        const verificationTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+        // Create new user (unverified)
         const newUser = await User.create({
             name: name.trim(),
             email: email.toLowerCase().trim(),
             password: hashedPassword,
+            isEmailVerified: false,
+            verificationToken,
+            verificationTokenExpiry,
         });
 
-        // Return user data (without password)
+        // Send verification email
+        await sendVerificationEmail(newUser.email, verificationToken, newUser.name);
+
+        // Return success but indicate verification is needed (don't return user object for auto-login)
         return NextResponse.json(
             {
-                message: "Account created successfully",
-                user: {
-                    id: newUser._id.toString(),
-                    name: newUser.name,
-                    email: newUser.email,
-                },
+                message: "Account created successfully. Please verify your email.",
+                needsVerification: true,
+                email: newUser.email,
             },
             { status: 201 }
         );

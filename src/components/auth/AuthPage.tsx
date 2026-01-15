@@ -10,21 +10,57 @@ interface AuthPageProps {
 }
 
 export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
-  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [mode, setMode] = useState<"login" | "signup" | "verify">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // Handle Resend Verification
+  const handleResendVerification = async () => {
+    setIsLoading(true);
+    setSuccessMsg("");
+    setError("");
+
+    try {
+      const res = await fetch("/api/auth/resend-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        setSuccessMsg("Verification email resent!");
+      } else {
+        setError(data.error || "Failed to resend email");
+      }
+    } catch (err) {
+      setError("Network error. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setSuccessMsg("");
     setIsLoading(true);
 
     try {
       if (mode === "signup") {
         const result = await signUp(name, email, password);
+
+        if (result.needsVerification) {
+          setMode("verify");
+          setIsLoading(false);
+          return;
+        }
+
         if (result.error) {
           setError(result.error);
           setIsLoading(false);
@@ -32,6 +68,14 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
         }
       } else {
         const result = await signIn(email, password);
+
+        if (result.needsVerification) {
+          setMode("verify");
+          setError(result.error || "Please verify your email");
+          setIsLoading(false);
+          return;
+        }
+
         if (result.error) {
           setError(result.error);
           setIsLoading(false);
@@ -45,6 +89,102 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
       setIsLoading(false);
     }
   };
+
+  // ----- VERIFICATION CHECK SCREEN -----
+  if (mode === "verify") {
+    return (
+      <main className="mesh-background">
+        <div className={styles.container}>
+          <div className={styles.brand}>
+            <h1 className={styles.logo}>SKETCHY</h1>
+          </div>
+
+          <div className={styles.card} style={{ maxWidth: "480px" }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", marginBottom: "2rem" }}>
+              <div style={{
+                width: "80px",
+                height: "80px",
+                borderRadius: "50%",
+                background: "#00d2be",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                marginBottom: "1.5rem"
+              }}>
+                <Mail size={40} color="white" />
+              </div>
+              <h2 style={{ fontSize: "1.75rem", fontWeight: "700", marginBottom: "0.75rem", color: "var(--ws-ink)" }}>
+                Check Your Email!
+              </h2>
+              <p style={{ color: "#64748b", fontSize: "1rem" }}>
+                We've sent a confirmation link to:
+              </p>
+              <div style={{
+                background: "#f1f5f9",
+                padding: "0.75rem 1rem",
+                borderRadius: "8px",
+                marginTop: "1rem",
+                width: "100%",
+                fontWeight: "600",
+                color: "var(--ws-ink)",
+                border: "1px solid #e2e8f0"
+              }}>
+                {email}
+              </div>
+            </div>
+
+            <div style={{
+              background: "#f8fafc",
+              borderRadius: "12px",
+              padding: "1.5rem",
+              marginBottom: "2rem",
+              textAlign: "left",
+              border: "1px solid #e2e8f0"
+            }}>
+              <h3 style={{ color: "var(--ws-ink)", fontSize: "1rem", marginBottom: "1rem" }}>Next steps:</h3>
+              <ol style={{ color: "#64748b", paddingLeft: "1.25rem", lineHeight: "1.6", margin: 0 }}>
+                <li>Open the email from Sketchy</li>
+                <li>Click the verification link</li>
+                <li>Come back and log in!</li>
+              </ol>
+            </div>
+
+            <div style={{ textAlign: "center" }}>
+              <p style={{ color: "#64748b", fontSize: "0.9rem", marginBottom: "1rem" }}>
+                Didn't receive it? {successMsg ? <span style={{ color: "green", fontWeight: "bold" }}>{successMsg}</span> : "Check your spam folder."}
+              </p>
+
+              {!successMsg && (
+                <button
+                  onClick={handleResendVerification}
+                  disabled={isLoading}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#00d2be",
+                    cursor: "pointer",
+                    fontWeight: "600",
+                    marginBottom: "1.5rem",
+                    textDecoration: "underline"
+                  }}
+                >
+                  Resend Email
+                </button>
+              )}
+
+              <button
+                className={styles.submitBtn}
+                onClick={() => setMode("login")}
+              >
+                <ArrowRight size={18} style={{ transform: "rotate(180deg)" }} />
+                Back to Login
+              </button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="mesh-background">
@@ -161,8 +301,8 @@ export default function AuthPage({ onAuthSuccess }: AuthPageProps) {
               </svg>
               Google
             </button>
-            <button 
-              className={styles.oauthBtn} 
+            <button
+              className={styles.oauthBtn}
               onClick={() => {
                 // Check if already authenticated via GitHub
                 const githubUser = getGitHubUser();
